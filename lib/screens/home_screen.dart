@@ -31,9 +31,9 @@ class HomeScreen extends StatelessWidget {
                     onTap: () {},
                   ),
                   const SizedBox(height: 12),
-                  SizedBox(
+                  const SizedBox(
                     height: 260,
-                    child: const MapView(),
+                    child: MapView(),
                   ),
                   const SizedBox(height: 24),
                   _SectionHeader(
@@ -52,7 +52,7 @@ class HomeScreen extends StatelessWidget {
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   itemCount: DummyData.reports.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 12),
+                  separatorBuilder: (_, __) => const SizedBox(width: 12),
                   itemBuilder: (_, i) =>
                       ReportCard(report: DummyData.reports[i]),
                 ),
@@ -319,4 +319,3 @@ class _SectionHeader extends StatelessWidget {
     );
   }
 }
-
