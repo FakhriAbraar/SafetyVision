@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../theme/app_theme.dart';
 
 class UploadReportScreen extends StatefulWidget {
@@ -15,8 +17,8 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
   String _selectedSeverity = 'Sedang';
   String _selectedCategory = 'Jalan Rusak';
 
-  // Simulate uploaded photos (in real app: use image_picker)
-  final List<String> _photoLabels = [];
+  final List<XFile> _photos = [];
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void dispose() {
@@ -25,17 +27,25 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
     super.dispose();
   }
 
-  void _addFakePhoto(String source) {
-    if (_photoLabels.length >= 5) return;
-    setState(() {
-      _photoLabels.add(source == 'camera'
-          ? 'Kamera ${_photoLabels.length + 1}'
-          : 'Galeri ${_photoLabels.length + 1}');
-    });
+  Future<void> _pickPhoto(ImageSource source) async {
+    if (_photos.length >= 5) return;
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        imageQuality: 70,
+      );
+      if (image != null) {
+        setState(() {
+          _photos.add(image);
+        });
+      }
+    } catch (e) {
+      debugPrint('Error picking image: $e');
+    }
   }
 
   void _removePhoto(int index) {
-    setState(() => _photoLabels.removeAt(index));
+    setState(() => _photos.removeAt(index));
   }
 
   void _submit() {
@@ -377,7 +387,7 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
 
         // Upload zone
         GestureDetector(
-          onTap: () => _addFakePhoto('gallery'),
+          onTap: () => _pickPhoto(ImageSource.gallery),
           child: Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 32),
@@ -422,14 +432,14 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
                     _photoSourceButton(
                       icon: Icons.camera_alt_rounded,
                       label: 'Kamera',
-                      onTap: () => _addFakePhoto('camera'),
+                      onTap: () => _pickPhoto(ImageSource.camera),
                     ),
                     const SizedBox(width: 10),
                     _photoSourceButton(
                       icon: Icons.photo_library_rounded,
                       label: 'Galeri',
                       filled: false,
-                      onTap: () => _addFakePhoto('gallery'),
+                      onTap: () => _pickPhoto(ImageSource.gallery),
                     ),
                   ],
                 ),
@@ -444,16 +454,16 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
         Row(
           children: [
             Text(
-              'Foto dipilih (${_photoLabels.length}/5)',
+              'Foto dipilih (${_photos.length}/5)',
               style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textPrimary),
             ),
             const Spacer(),
-            if (_photoLabels.isNotEmpty)
+            if (_photos.isNotEmpty)
               GestureDetector(
-                onTap: () => setState(() => _photoLabels.clear()),
+                onTap: () => setState(() => _photos.clear()),
                 child: const Text('Hapus semua',
                     style: TextStyle(
                         fontSize: 12, color: AppColors.danger)),
@@ -462,7 +472,7 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
         ),
         const SizedBox(height: 10),
 
-        if (_photoLabels.isEmpty)
+        if (_photos.isEmpty)
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -489,11 +499,11 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
               mainAxisSpacing: 8,
             ),
             itemCount:
-            _photoLabels.length < 5 ? _photoLabels.length + 1 : 5,
+            _photos.length < 5 ? _photos.length + 1 : 5,
             itemBuilder: (_, i) {
-              if (i == _photoLabels.length && _photoLabels.length < 5) {
+              if (i == _photos.length && _photos.length < 5) {
                 return GestureDetector(
-                  onTap: () => _addFakePhoto('gallery'),
+                  onTap: () => _pickPhoto(ImageSource.gallery),
                   child: Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
@@ -518,25 +528,11 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.image_rounded,
-                            size: 28, color: AppColors.primary),
-                        const SizedBox(height: 4),
-                        Text(
-                          _photoLabels[i],
-                          style: const TextStyle(
-                              fontSize: 9,
-                              color: AppColors.textSecondary),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.file(
+                      File(_photos[i].path),
+                      fit: BoxFit.cover,
                     ),
                   ),
                   Positioned(
