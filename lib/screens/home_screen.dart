@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/road_report.dart';
+import '../services/app_scope.dart';
 import '../theme/app_theme.dart';
 import '../widgets/home_app_bar.dart';
 import '../widgets/map_view.dart';
@@ -48,13 +49,33 @@ class HomeScreen extends StatelessWidget {
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 250,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: DummyData.reports.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 12),
-                  itemBuilder: (_, i) =>
-                      ReportCard(report: DummyData.reports[i]),
+                child: StreamBuilder<List<RoadReport>>(
+                  stream: AppScope.of(context).reports.watchReports(),
+                  initialData: const [],
+                  builder: (context, snapshot) {
+                    final reports = snapshot.data ?? const <RoadReport>[];
+                    if (reports.isEmpty) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 20),
+                          child: Text(
+                            'Belum ada laporan. Jadilah yang pertama!',
+                            style: TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                    return ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: reports.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 12),
+                      itemBuilder: (_, i) => ReportCard(report: reports[i]),
+                    );
+                  },
                 ),
               ),
             ),
