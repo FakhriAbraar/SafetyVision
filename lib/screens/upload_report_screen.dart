@@ -1,7 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:google_generative_ai/google_generative_ai.dart';
 import '../theme/app_theme.dart';
+
+const String geminiApiKey = 'KEY_HERE';
 
 class UploadReportScreen extends StatefulWidget {
   const UploadReportScreen({super.key});
@@ -11,7 +15,8 @@ class UploadReportScreen extends StatefulWidget {
 }
 
 class _UploadReportScreenState extends State<UploadReportScreen> {
-  int _currentStep = 0; // 0=detail, 1=foto, 2=lokasi
+  int _currentStep = 0; // 0=detail, 1=foto, 2=analisis, 3=lokasi
+  bool _isAnalyzing = false;
   final _titleController = TextEditingController();
   final _descController = TextEditingController();
   String _selectedSeverity = 'Sedang';
@@ -87,7 +92,9 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
                   ? _buildStep1Detail()
                   : _currentStep == 1
                   ? _buildStep2Photo()
-                  : _buildStep3Location(),
+                  : _currentStep == 2
+                  ? _buildStep3Analysis()
+                  : _buildStep4Location(),
             ),
           ),
           _buildBottomActions(),
@@ -159,7 +166,7 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
   }
 
   Widget _buildStepIndicator() {
-    final steps = ['Detail', 'Foto', 'Lokasi'];
+    final steps = ['Detail', 'Foto', 'Analisis', 'Lokasi'];
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
       child: Row(
@@ -226,15 +233,6 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
 
   // ─── Step 1: Detail ───────────────────────────────────────────
   Widget _buildStep1Detail() {
-    final severities = ['Ringan', 'Sedang', 'Parah'];
-    final categories = [
-      'Jalan Rusak',
-      'Banjir',
-      'Trotoar Rusak',
-      'Lampu Mati',
-      'Lainnya'
-    ];
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -268,110 +266,6 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
               contentPadding: EdgeInsets.all(14),
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-        _sectionLabel('Kategori'),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: categories.map((cat) {
-            final isSelected = _selectedCategory == cat;
-            return GestureDetector(
-              onTap: () => setState(() => _selectedCategory = cat),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? AppColors.primary
-                      : AppColors.surface,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isSelected
-                        ? AppColors.primary
-                        : AppColors.divider,
-                  ),
-                ),
-                child: Text(
-                  cat,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: isSelected
-                        ? Colors.white
-                        : AppColors.textSecondary,
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 16),
-        _sectionLabel('Tingkat Keparahan'),
-        const SizedBox(height: 8),
-        Row(
-          children: severities.map((s) {
-            final isSelected = _selectedSeverity == s;
-            Color color;
-            Color bgColor;
-            switch (s) {
-              case 'Ringan':
-                color = AppColors.success;
-                bgColor = const Color(0xFFD1FAE5);
-                break;
-              case 'Sedang':
-                color = AppColors.warning;
-                bgColor = const Color(0xFFFEF3C7);
-                break;
-              default:
-                color = AppColors.danger;
-                bgColor = const Color(0xFFFEE2E2);
-            }
-            return Expanded(
-              child: GestureDetector(
-                onTap: () => setState(() => _selectedSeverity = s),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  margin: EdgeInsets.only(right: s != 'Parah' ? 8 : 0),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isSelected ? bgColor : AppColors.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isSelected ? color : AppColors.divider,
-                      width: isSelected ? 1.5 : 1,
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: color,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        s,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: isSelected
-                              ? FontWeight.w600
-                              : FontWeight.w400,
-                          color: isSelected ? color : AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
         ),
         const SizedBox(height: 24),
       ],
@@ -604,8 +498,212 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
     );
   }
 
-  // ─── Step 3: Lokasi ───────────────────────────────────────────
-  Widget _buildStep3Location() {
+  Future<void> _analyzePhotosWithAI() async {
+    setState(() => _currentStep = 2); // Pindah ke tahap analisis langsung
+    
+    if (_photos.isEmpty) {
+      return;
+    }
+    
+    setState(() => _isAnalyzing = true);
+    
+    try {
+      final model = GenerativeModel(
+        model: 'gemini-2.5-flash',
+        apiKey: geminiApiKey,
+        generationConfig: GenerationConfig(
+          responseMimeType: 'application/json',
+          responseSchema: Schema.object(
+            properties: {
+              'kategori': Schema.string(description: 'Kategori masalah, contoh: Jalan Rusak, Banjir, Trotoar Rusak, Lampu Mati, Lainnya'),
+              'keparahan': Schema.string(description: 'Tingkat keparahan: Ringan, Sedang, atau Parah'),
+            },
+          ),
+        ),
+      );
+
+      final prompt = TextPart('Analisis foto kerusakan infrastruktur berikut. Tentukan kategori masalah dan tingkat keparahannya.');
+      final imageParts = await Future.wait(_photos.map((file) async => DataPart('image/jpeg', await file.readAsBytes())));
+      
+      final content = [Content.multi([prompt, ...imageParts])];
+      final response = await model.generateContent(content);
+      
+      if (response.text != null) {
+        try {
+          final data = jsonDecode(response.text!);
+          if (data['kategori'] != null) {
+            String cat = data['kategori'].toString();
+            if (['Jalan Rusak', 'Banjir', 'Trotoar Rusak', 'Lampu Mati'].contains(cat)) {
+              _selectedCategory = cat;
+            } else {
+              _selectedCategory = 'Lainnya';
+            }
+          }
+          if (data['keparahan'] != null) {
+             String sev = data['keparahan'].toString();
+             if (['Ringan', 'Sedang', 'Parah'].contains(sev)) {
+               _selectedSeverity = sev;
+             }
+          }
+        } catch (e) {
+          debugPrint('JSON parse error: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('AI Analysis Error: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAnalyzing = false;
+        });
+      }
+    }
+  }
+
+  // ─── Step 3: Hasil Analisis ───────────────────────────────────
+  Widget _buildStep3Analysis() {
+    final severities = ['Ringan', 'Sedang', 'Parah'];
+    final categories = [
+      'Jalan Rusak',
+      'Banjir',
+      'Trotoar Rusak',
+      'Lampu Mati',
+      'Lainnya'
+    ];
+
+    if (_isAnalyzing) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(height: 60),
+            const CircularProgressIndicator(color: AppColors.primary),
+            const SizedBox(height: 16),
+            const Text('AI sedang menganalisis foto...',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.auto_awesome_rounded, color: AppColors.primary, size: 20),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('Hasil analisis AI berdasarkan foto Anda. Anda dapat menyesuaikannya jika kurang tepat.',
+                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _sectionLabel('Kategori (Terdeteksi)'),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: categories.map((cat) {
+            final isSelected = _selectedCategory == cat;
+            return GestureDetector(
+              onTap: () => setState(() => _selectedCategory = cat),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isSelected ? AppColors.primary : AppColors.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: isSelected ? AppColors.primary : AppColors.divider),
+                ),
+                child: Text(
+                  cat,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: isSelected ? Colors.white : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 16),
+        _sectionLabel('Tingkat Keparahan (Terdeteksi)'),
+        const SizedBox(height: 8),
+        Row(
+          children: severities.map((s) {
+            final isSelected = _selectedSeverity == s;
+            Color color;
+            Color bgColor;
+            switch (s) {
+              case 'Ringan':
+                color = AppColors.success;
+                bgColor = const Color(0xFFD1FAE5);
+                break;
+              case 'Sedang':
+                color = AppColors.warning;
+                bgColor = const Color(0xFFFEF3C7);
+                break;
+              default:
+                color = AppColors.danger;
+                bgColor = const Color(0xFFFEE2E2);
+            }
+            return Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => _selectedSeverity = s),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  margin: EdgeInsets.only(right: s != 'Parah' ? 8 : 0),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isSelected ? bgColor : AppColors.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected ? color : AppColors.divider,
+                      width: isSelected ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        s,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                          color: isSelected ? color : AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  // ─── Step 4: Lokasi ───────────────────────────────────────────
+  Widget _buildStep4Location() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -767,7 +865,7 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
       ),
       child: Row(
         children: [
-          if (_currentStep > 0)
+          if (_currentStep > 0 && !_isAnalyzing)
             Expanded(
               child: OutlinedButton(
                 onPressed: () =>
@@ -783,12 +881,19 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
                         color: AppColors.textSecondary, fontSize: 14)),
               ),
             ),
-          if (_currentStep > 0) const SizedBox(width: 12),
+          if (_currentStep > 0 && !_isAnalyzing) const SizedBox(width: 12),
           Expanded(
             flex: 2,
             child: ElevatedButton(
-              onPressed:
-              _currentStep == 2 ? _submit : () => setState(() => _currentStep++),
+              onPressed: _isAnalyzing ? null : () {
+                if (_currentStep == 3) {
+                  _submit();
+                } else if (_currentStep == 1) {
+                  _analyzePhotosWithAI();
+                } else {
+                  setState(() => _currentStep++);
+                }
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
@@ -801,13 +906,13 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    _currentStep == 2 ? 'Kirim Laporan' : 'Lanjut',
+                    _currentStep == 3 ? 'Kirim Laporan' : 'Lanjut',
                     style: const TextStyle(
                         fontSize: 14, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(width: 6),
                   Icon(
-                    _currentStep == 2
+                    _currentStep == 3
                         ? Icons.send_rounded
                         : Icons.arrow_forward_rounded,
                     size: 16,

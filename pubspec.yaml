@@ -38,6 +38,7 @@ dependencies:
   latlong2: ^0.9.1
   google_fonts: ^6.2.1
   image_picker: ^1.1.2
+  google_generative_ai: ^0.4.6
   firebase_core: ^4.10.0
   cloud_firestore: ^6.5.0
 

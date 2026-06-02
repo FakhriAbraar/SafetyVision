@@ -2,7 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'firebase_options.dart';
-import 'screens/home_screen.dart';
+import 'screens/main_shell.dart';
 import 'services/app_scope.dart';
 import 'services/report_repository.dart';
 import 'theme/app_theme.dart';
@@ -18,9 +18,11 @@ void main() async {
     ),
   );
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
 
   final ReportRepository repo = kUseFirestore
       ? FirestoreReportRepository()
@@ -41,7 +43,7 @@ class SafeVisionApp extends StatelessWidget {
         title: 'SafeVision',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
-        home: const HomeScreen(),
+        home: const MainShell(),
       ),
     );
   }
