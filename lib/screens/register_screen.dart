@@ -1,4 +1,6 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import 'main_shell.dart';
 
@@ -17,6 +19,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscurePassword = true;
   bool _isLoading = false;
   bool _agreeTerms = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -27,23 +30,56 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  void _register() async {
+  Future<void> _register() async {
+    // Validasi form
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+      setState(() =>
+      _errorMessage = 'Nama, email, dan password wajib diisi.');
+      return;
+    }
+    if (password.length < 8) {
+      setState(() =>
+      _errorMessage = 'Password minimal 8 karakter.');
+      return;
+    }
     if (!_agreeTerms) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Harap setujui syarat & ketentuan terlebih dahulu'),
+        SnackBar(
+          content: const Text(
+              'Harap setujui syarat & ketentuan terlebih dahulu'),
           backgroundColor: AppColors.warning,
+          behavior: SnackBarBehavior.floating,
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.all(16),
         ),
       );
       return;
     }
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 1000));
-    if (!mounted) return;
-    setState(() => _isLoading = false);
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const MainShell()),
-    );
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await AuthService.register(
+          name: name, email: email, password: password);
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainShell()),
+      );
+    } on FirebaseAuthException catch (e) {
+      setState(() => _errorMessage = AuthService.friendlyError(e));
+    } catch (e) {
+      setState(() => _errorMessage = 'Terjadi kesalahan tak terduga.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -63,7 +99,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   _buildAvatarPicker(),
                   const SizedBox(height: 28),
                   _buildForm(),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
+                  if (_errorMessage != null) _buildErrorBox(_errorMessage!),
+                  const SizedBox(height: 8),
                   _buildTermsCheckbox(),
                   const SizedBox(height: 24),
                   _buildRegisterButton(),
@@ -71,6 +109,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   _buildLoginLink(),
                   const SizedBox(height: 32),
                 ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorBox(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.danger.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline_rounded,
+              color: AppColors.danger, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.danger,
+                height: 1.4,
               ),
             ),
           ),
@@ -186,7 +254,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           keyboardType: TextInputType.emailAddress,
         ),
         const SizedBox(height: 16),
-        _buildLabel('No. Telepon'),
+        _buildLabel('No. Telepon (opsional)'),
         const SizedBox(height: 8),
         _buildTextField(
           controller: _phoneController,
@@ -247,6 +315,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         controller: controller,
         keyboardType: keyboardType,
         obscureText: obscure,
+        onChanged: (_) {
+          if (_errorMessage != null) setState(() => _errorMessage = null);
+        },
         style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
         decoration: InputDecoration(
           hintText: hint,
@@ -325,8 +396,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16),
-          shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
           elevation: 0,
         ),
         child: _isLoading
@@ -338,8 +409,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         )
             : const Text(
           'Daftar Sekarang',
-          style:
-          TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          style: TextStyle(
+              fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -352,13 +423,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
         child: RichText(
           text: const TextSpan(
             text: 'Sudah punya akun? ',
-            style:
-            TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            style: TextStyle(
+                fontSize: 14, color: AppColors.textSecondary),
             children: [
               TextSpan(
                 text: 'Masuk',
                 style: TextStyle(
-                    color: AppColors.primary, fontWeight: FontWeight.w600),
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600),
               ),
             ],
           ),

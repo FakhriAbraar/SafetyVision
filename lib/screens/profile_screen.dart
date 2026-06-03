@@ -1,4 +1,6 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
 
@@ -7,12 +9,15 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Ambil data user yang sedang login
+    final user = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SingleChildScrollView(
         child: Column(
           children: [
-            _buildProfileHeader(),
+            _buildProfileHeader(user),
             const SizedBox(height: 20),
             _buildStatsRow(),
             const SizedBox(height: 20),
@@ -24,7 +29,10 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildProfileHeader() {
+  Widget _buildProfileHeader(User? user) {
+    final displayName = user?.displayName ?? 'Warga SafeVision';
+    final email = user?.email ?? '-';
+
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
@@ -90,17 +98,17 @@ class ProfileScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Warga SafeVision',
-                style: TextStyle(
+              Text(
+                displayName,
+                style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'warga@safevision.id',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
+              Text(
+                email,
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
               ),
               const SizedBox(height: 12),
               Container(
@@ -110,9 +118,9 @@ class ProfileScreen extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Row(
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
+                  children: [
                     Icon(Icons.bolt_rounded,
                         color: AppColors.accent, size: 16),
                     SizedBox(width: 4),
@@ -132,21 +140,15 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildStatsRow() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 20),
       child: Row(
-        children: const [
-          Expanded(
-            child: _StatTile(value: '12', label: 'Laporan'),
-          ),
+        children: [
+          Expanded(child: _StatTile(value: '12', label: 'Laporan')),
           SizedBox(width: 12),
-          Expanded(
-            child: _StatTile(value: '8', label: 'Diproses'),
-          ),
+          Expanded(child: _StatTile(value: '8', label: 'Diproses')),
           SizedBox(width: 12),
-          Expanded(
-            child: _StatTile(value: '4', label: 'Selesai'),
-          ),
+          Expanded(child: _StatTile(value: '4', label: 'Selesai')),
         ],
       ),
     );
@@ -160,12 +162,12 @@ class ProfileScreen extends StatelessWidget {
       _MenuItem(Icons.shield_outlined, 'Privasi & Keamanan', () {}),
       _MenuItem(Icons.help_outline_rounded, 'Bantuan', () {}),
       _MenuItem(Icons.info_outline_rounded, 'Tentang Aplikasi', () {}),
-      _MenuItem(Icons.logout_rounded, 'Keluar', () {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-              (_) => false,
-        );
-      }, isDestructive: true),
+      _MenuItem(
+        Icons.logout_rounded,
+        'Keluar',
+            () => _confirmSignOut(context),
+        isDestructive: true,
+      ),
     ];
 
     return Padding(
@@ -232,6 +234,54 @@ class ProfileScreen extends StatelessWidget {
             );
           }),
         ),
+      ),
+    );
+  }
+
+  void _confirmSignOut(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Keluar',
+          style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary),
+        ),
+        content: const Text(
+          'Kamu yakin ingin keluar dari akun ini?',
+          style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await AuthService.signOut();
+              if (!context.mounted) return;
+              // AuthGate di main.dart akan otomatis redirect ke LoginScreen
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (_) => false,
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.danger,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              elevation: 0,
+            ),
+            child: const Text('Keluar'),
+          ),
+        ],
       ),
     );
   }
