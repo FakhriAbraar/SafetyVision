@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import '../models/road_report.dart';
 import '../theme/app_theme.dart';
@@ -52,13 +54,50 @@ class ReportCard extends StatelessWidget {
     }
   }
 
+  Widget _buildImage(Color color) {
+    final path = report.imagePath;
+    if (path != null && path.isNotEmpty && File(path).existsSync()) {
+      return Image.file(
+        File(path),
+        height: 90,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (_, error, stack) => _imagePlaceholder(color),
+      );
+    }
+    return _imagePlaceholder(color);
+  }
+
+  Widget _imagePlaceholder(Color color) {
+    return Container(
+      height: 90,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            color.withValues(alpha: 0.15),
+            color.withValues(alpha: 0.05),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          Icons.image_outlined,
+          size: 36,
+          color: color.withValues(alpha: 0.5),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final sev = _severity;
     final st = _status;
 
     return Container(
-      width: 260,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -114,27 +153,9 @@ class ReportCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          Container(
-            height: 90,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: LinearGradient(
-                colors: [
-                  sev.color.withValues(alpha: 0.15),
-                  sev.color.withValues(alpha: 0.05),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-            child: Center(
-              child: Icon(
-                Icons.image_outlined,
-                size: 36,
-                color: sev.color.withValues(alpha: 0.5),
-              ),
-            ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: _buildImage(sev.color),
           ),
           const SizedBox(height: 12),
           Text(

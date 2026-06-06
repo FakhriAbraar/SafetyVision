@@ -46,7 +46,9 @@ class DummyReportRepository implements ReportRepository {
       status: status,
       reportedAgo: old.reportedAgo,
       votes: old.votes,
-      imageUrl: old.imageUrl,
+      imagePath: old.imagePath,
+      userId: old.userId,
+      userName: old.userName,
       createdAt: old.createdAt,
     );
     _controller.add(List.unmodifiable(_reports));

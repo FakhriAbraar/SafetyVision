@@ -9,6 +9,15 @@ class AuthService {
   /// User yang sedang login (null jika belum login)
   static User? get currentUser => _auth.currentUser;
 
+  /// Muat ulang data user dari server (mis. memastikan displayName terbaru).
+  static Future<void> reloadUser() async {
+    try {
+      await _auth.currentUser?.reload();
+    } catch (_) {
+      // Abaikan bila offline — pakai data yang ada.
+    }
+  }
+
   /// Login dengan email & password
   /// Melempar [AuthException] jika gagal
   static Future<UserCredential> signIn({

@@ -61,7 +61,9 @@ class RoadReport {
   final ReportStatus status;
   final String reportedAgo;
   final int votes;
-  final String? imageUrl;
+  final String? imagePath; // path foto di penyimpanan lokal HP (bukan URL)
+  final String? userId; // uid pemilik laporan (relasi ke user yang login)
+  final String? userName; // nama pelapor (displayName user)
   final DateTime? createdAt;
 
   const RoadReport({
@@ -74,7 +76,9 @@ class RoadReport {
     required this.status,
     required this.reportedAgo,
     required this.votes,
-    this.imageUrl,
+    this.imagePath,
+    this.userId,
+    this.userName,
     this.createdAt,
   });
 
@@ -95,7 +99,9 @@ class RoadReport {
       status: _statusFromString(data['status'] as String?),
       reportedAgo: _formatAgo(created),
       votes: (data['votes'] as num?)?.toInt() ?? 0,
-      imageUrl: data['imageUrl'] as String?,
+      imagePath: data['imagePath'] as String?,
+      userId: data['userId'] as String?,
+      userName: data['userName'] as String?,
       createdAt: created,
     );
   }
@@ -109,7 +115,9 @@ class RoadReport {
       'severity': _severityToString(severity),
       'status': _statusToString(status),
       'votes': votes,
-      'imageUrl': imageUrl,
+      'imagePath': imagePath,
+      'userId': userId,
+      'userName': userName,
       'createdAt': createdAt == null
           ? FieldValue.serverTimestamp()
           : Timestamp.fromDate(createdAt!),

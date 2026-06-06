@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../models/road_report.dart';
+import '../services/app_scope.dart';
 import '../theme/app_theme.dart';
 
 class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -52,12 +54,27 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
                         color: AppColors.primary,
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        'Jakarta, Indonesia',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w500,
+                      Flexible(
+                        child: StreamBuilder<List<RoadReport>>(
+                          stream: AppScope.of(context).reports.watchReports(),
+                          initialData: const [],
+                          builder: (context, snapshot) {
+                            final reports =
+                                snapshot.data ?? const <RoadReport>[];
+                            final label = reports.isNotEmpty
+                                ? reports.first.address
+                                : 'Belum ada lokasi';
+                            return Text(
+                              label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            );
+                          },
                         ),
                       ),
                       const SizedBox(width: 2),

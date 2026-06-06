@@ -1,9 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import '../models/road_report.dart';
+import '../services/app_scope.dart';
+import '../services/auth_service.dart';
+import '../services/location_service.dart';
 import '../theme/app_theme.dart';
+import 'camera_screen.dart';
 
 const String geminiApiKey = 'KEY_HERE';
 
@@ -19,20 +26,46 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
   bool _isAnalyzing = false;
   final _titleController = TextEditingController();
   final _descController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _subLocalityController = TextEditingController();
   String _selectedSeverity = 'Sedang';
   String _selectedCategory = 'Jalan Rusak';
 
   final List<XFile> _photos = [];
   final ImagePicker _picker = ImagePicker();
 
+  // Lokasi laporan (diambil saat foto / saat upload).
+  ReportLocation? _location;
+  bool _isLoadingLocation = false;
+  bool _isSubmitting = false;
+
   @override
   void dispose() {
     _titleController.dispose();
     _descController.dispose();
+    _addressController.dispose();
+    _subLocalityController.dispose();
     super.dispose();
   }
 
+  /// Buka kamera dalam aplikasi (tema SafeVision), bukan kamera default HP.
+  Future<void> _openCamera() async {
+    if (_photos.length >= 5) return;
+    final XFile? image = await Navigator.push<XFile>(
+      context,
+      MaterialPageRoute(builder: (_) => const CameraScreen()),
+    );
+    if (image != null) {
+      setState(() => _photos.add(image));
+      _ensureLocation(); // minta akses lokasi saat foto diambil
+    }
+  }
+
   Future<void> _pickPhoto(ImageSource source) async {
+    if (source == ImageSource.camera) {
+      await _openCamera();
+      return;
+    }
     if (_photos.length >= 5) return;
     try {
       final XFile? image = await _picker.pickImage(
@@ -40,9 +73,8 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
         imageQuality: 70,
       );
       if (image != null) {
-        setState(() {
-          _photos.add(image);
-        });
+        setState(() => _photos.add(image));
+        _ensureLocation(); // minta akses lokasi saat memilih foto
       }
     } catch (e) {
       debugPrint('Error picking image: $e');
@@ -53,18 +85,110 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
     setState(() => _photos.removeAt(index));
   }
 
-  void _submit() {
-    Navigator.pop(context);
+  /// Mengambil lokasi terkini (minta izin bila perlu). [force] untuk refresh.
+  Future<void> _ensureLocation({bool force = false}) async {
+    if (_isLoadingLocation) return;
+    if (_location != null && !force) return;
+    setState(() => _isLoadingLocation = true);
+    try {
+      final loc = await LocationService.getCurrentLocation();
+      if (!mounted) return;
+      setState(() {
+        _location = loc;
+        _addressController.text = loc.address;
+        if (_subLocalityController.text.isEmpty) {
+          _subLocalityController.text = loc.subLocality;
+        }
+      });
+    } on LocationException catch (e) {
+      if (!mounted) return;
+      _showSnack(e.message, AppColors.danger, Icons.location_off_rounded);
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack('Gagal mengambil lokasi: $e', AppColors.danger,
+          Icons.location_off_rounded);
+    } finally {
+      if (mounted) setState(() => _isLoadingLocation = false);
+    }
+  }
+
+  ReportSeverity _severityFromLabel(String label) {
+    switch (label) {
+      case 'Ringan':
+        return ReportSeverity.low;
+      case 'Parah':
+        return ReportSeverity.high;
+      default:
+        return ReportSeverity.medium;
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_isSubmitting) return;
+
+    final repo = AppScope.of(context).reports;
+    final navigator = Navigator.of(context);
+
+    // Pastikan lokasi tersedia saat upload foto.
+    if (_location == null) {
+      await _ensureLocation();
+      if (!mounted || _location == null) return; // gagal ambil lokasi → batal
+    }
+    final loc = _location!;
+
+    setState(() => _isSubmitting = true);
+
+    // Pastikan displayName terbaru sebelum menyimpan pelapor.
+    await AuthService.reloadUser();
+    if (!mounted) return;
+    final user = AuthService.currentUser;
+    final title = _titleController.text.trim();
+    final address = _addressController.text.trim();
+    final report = RoadReport(
+      id: '',
+      title: title.isEmpty ? 'Laporan Kerusakan' : title,
+      address: address.isEmpty ? loc.address : address,
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      severity: _severityFromLabel(_selectedSeverity),
+      status: ReportStatus.pending,
+      reportedAgo: 'baru saja',
+      votes: 0,
+      // Simpan path foto lokal HP ke Firestore (bukan URL/upload gambar).
+      imagePath: _photos.isNotEmpty ? _photos.first.path : null,
+      // Relasi laporan ke user yang sedang login.
+      userId: user?.uid,
+      userName: (user?.displayName?.trim().isNotEmpty ?? false)
+          ? user!.displayName!.trim()
+          : (user?.email ?? 'Pengguna'),
+      createdAt: null, // pakai serverTimestamp di Firestore
+    );
+
+    try {
+      await repo.addReport(report);
+      if (!mounted) return;
+      navigator.pop();
+      _showSnack('Laporan berhasil dikirim!', AppColors.success,
+          Icons.check_circle_rounded);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      _showSnack('Gagal mengirim laporan: $e', AppColors.danger,
+          Icons.error_rounded);
+    }
+  }
+
+  void _showSnack(String message, Color color, IconData icon) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Row(
+        content: Row(
           children: [
-            Icon(Icons.check_circle_rounded, color: Colors.white),
-            SizedBox(width: 8),
-            Text('Laporan berhasil dikirim!'),
+            Icon(icon, color: Colors.white),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: AppColors.success,
+        backgroundColor: color,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(16),
@@ -711,81 +835,66 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
         _sectionLabel('Lokasi Kejadian'),
         const SizedBox(height: 8),
 
-        // Map placeholder
-        Container(
-          height: 180,
-          decoration: BoxDecoration(
-            color: const Color(0xFFE8F0E8),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.divider),
-          ),
-          child: Stack(
-            children: [
-              Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.map_rounded,
-                        size: 48,
-                        color: AppColors.success.withValues(alpha: 0.5)),
-                    const SizedBox(height: 8),
-                    const Text('Peta Lokasi',
-                        style: TextStyle(
-                            fontSize: 13, color: AppColors.textSecondary)),
-                  ],
-                ),
-              ),
-              Positioned(
-                top: 12,
-                right: 12,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 8,
-                      ),
-                    ],
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.my_location_rounded,
-                          size: 14, color: AppColors.primary),
-                      SizedBox(width: 4),
-                      Text('Lokasiku',
-                          style: TextStyle(
-                              fontSize: 11, color: AppColors.primary)),
-                    ],
-                  ),
-                ),
-              ),
-              const Center(
-                child: Icon(Icons.location_on_rounded,
-                    size: 36, color: AppColors.danger),
-              ),
-            ],
-          ),
-        ),
+        // Peta lokasi (koordinat asli dari GPS)
+        _buildLocationMap(),
 
         const SizedBox(height: 12),
 
+        // Tombol ambil ulang lokasi
+        GestureDetector(
+          onTap: _isLoadingLocation ? null : () => _ensureLocation(force: true),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+              border:
+                  Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_isLoadingLocation)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: AppColors.primary),
+                  )
+                else
+                  const Icon(Icons.my_location_rounded,
+                      size: 16, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Text(
+                  _isLoadingLocation
+                      ? 'Mengambil lokasi...'
+                      : _location == null
+                          ? 'Gunakan lokasi saya'
+                          : 'Perbarui lokasi',
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+        _sectionLabel('Alamat Terdeteksi'),
+        const SizedBox(height: 8),
         _buildTextInput(
-          controller: TextEditingController(
-              text: 'Jl. Sudirman No. 45, Jakarta Pusat'),
-          hint: 'Cari alamat...',
-          icon: Icons.search_rounded,
+          controller: _addressController,
+          hint: 'Alamat akan terisi otomatis dari lokasi...',
+          icon: Icons.place_rounded,
         ),
 
         const SizedBox(height: 16),
         _sectionLabel('Kecamatan / Kelurahan'),
         const SizedBox(height: 8),
         _buildTextInput(
-          controller: TextEditingController(),
+          controller: _subLocalityController,
           hint: 'Contoh: Kec. Tanah Abang',
           icon: Icons.location_city_rounded,
         ),
@@ -854,6 +963,113 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
     );
   }
 
+  Widget _buildLocationMap() {
+    final loc = _location;
+    if (loc == null) {
+      return Container(
+        height: 180,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8F0E8),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.divider),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (_isLoadingLocation)
+                const CircularProgressIndicator(color: AppColors.primary)
+              else
+                Icon(Icons.location_searching_rounded,
+                    size: 44, color: AppColors.success.withValues(alpha: 0.5)),
+              const SizedBox(height: 10),
+              Text(
+                _isLoadingLocation
+                    ? 'Mengambil lokasi Anda...'
+                    : 'Lokasi belum diambil.\nTekan "Gunakan lokasi saya".',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final point = LatLng(loc.latitude, loc.longitude);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        height: 180,
+        child: Stack(
+          children: [
+            FlutterMap(
+              options: MapOptions(
+                initialCenter: point,
+                initialZoom: 16,
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+                ),
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate:
+                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.example.safevision',
+                ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: point,
+                      width: 40,
+                      height: 40,
+                      child: const Icon(Icons.location_on_rounded,
+                          size: 40, color: AppColors.danger),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            Positioned(
+              left: 12,
+              bottom: 12,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.my_location_rounded,
+                        size: 13, color: AppColors.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${loc.latitude.toStringAsFixed(5)}, ${loc.longitude.toStringAsFixed(5)}',
+                      style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ─── Bottom Actions ───────────────────────────────────────────
   Widget _buildBottomActions() {
     return Container(
@@ -885,13 +1101,16 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
           Expanded(
             flex: 2,
             child: ElevatedButton(
-              onPressed: _isAnalyzing ? null : () {
+              onPressed: (_isAnalyzing || _isSubmitting) ? null : () {
                 if (_currentStep == 3) {
                   _submit();
                 } else if (_currentStep == 1) {
                   _analyzePhotosWithAI();
                 } else {
                   setState(() => _currentStep++);
+                  if (_currentStep == 3) {
+                    _ensureLocation(); // minta lokasi saat masuk tahap lokasi
+                  }
                 }
               },
               style: ElevatedButton.styleFrom(
@@ -902,23 +1121,30 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
                     borderRadius: BorderRadius.circular(14)),
                 elevation: 0,
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    _currentStep == 3 ? 'Kirim Laporan' : 'Lanjut',
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(width: 6),
-                  Icon(
-                    _currentStep == 3
-                        ? Icons.send_rounded
-                        : Icons.arrow_forward_rounded,
-                    size: 16,
-                  ),
-                ],
-              ),
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          _currentStep == 3 ? 'Kirim Laporan' : 'Lanjut',
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          _currentStep == 3
+                              ? Icons.send_rounded
+                              : Icons.arrow_forward_rounded,
+                          size: 16,
+                        ),
+                      ],
+                    ),
             ),
           ),
         ],

@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import '../models/road_report.dart';
 import '../services/app_scope.dart';
+import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/home_app_bar.dart';
 import '../widgets/map_view.dart';
 import '../widgets/report_card.dart';
+import '../widgets/report_detail_sheet.dart';
 import '../widgets/stats_row.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onSeeMap;
+  const HomeScreen({super.key, this.onSeeMap});
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +32,7 @@ class HomeScreen extends StatelessWidget {
                   _SectionHeader(
                     title: 'Peta Laporan',
                     actionLabel: 'Lihat semua',
-                    onTap: () {},
+                    onTap: onSeeMap ?? () {},
                   ),
                   const SizedBox(height: 12),
                   const SizedBox(
@@ -37,46 +40,13 @@ class HomeScreen extends StatelessWidget {
                     child: MapView(),
                   ),
                   const SizedBox(height: 24),
-                  _SectionHeader(
-                    title: 'Laporan Terbaru',
-                    actionLabel: 'Filter',
-                    onTap: () {},
-                  ),
-                  const SizedBox(height: 12),
                 ]),
               ),
             ),
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 250,
-                child: StreamBuilder<List<RoadReport>>(
-                  stream: AppScope.of(context).reports.watchReports(),
-                  initialData: const [],
-                  builder: (context, snapshot) {
-                    final reports = snapshot.data ?? const <RoadReport>[];
-                    if (reports.isEmpty) {
-                      return const Center(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 20),
-                          child: Text(
-                            'Belum ada laporan. Jadilah yang pertama!',
-                            style: TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                    return ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: reports.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 12),
-                      itemBuilder: (_, i) => ReportCard(report: reports[i]),
-                    );
-                  },
-                ),
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: _RecentReports(),
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 32)),
@@ -88,6 +58,15 @@ class HomeScreen extends StatelessWidget {
 }
 
 class _GreetingBanner extends StatelessWidget {
+  String _greetingName() {
+    final user = AuthService.currentUser;
+    final name = user?.displayName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    final email = user?.email;
+    if (email != null && email.isNotEmpty) return email.split('@').first;
+    return 'Warga';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -115,9 +94,11 @@ class _GreetingBanner extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Halo, Warga 👋',
-                      style: TextStyle(
+                    Text(
+                      'Halo, ${_greetingName()} 👋',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
@@ -337,6 +318,113 @@ class _SectionHeader extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Bagian "Laporan Terbaru": punya filter status (Semua/Aktif/Diproses/Selesai)
+/// dan grid kartu yang bisa diketuk untuk membuka popup detail.
+class _RecentReports extends StatefulWidget {
+  const _RecentReports();
+
+  @override
+  State<_RecentReports> createState() => _RecentReportsState();
+}
+
+class _RecentReportsState extends State<_RecentReports> {
+  // null = Semua
+  ReportStatus? _filter;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Laporan Terbaru',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Filter status (sesuai grid statistik di atas)
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _filterChip('Semua', null),
+            _filterChip('Aktif', ReportStatus.pending),
+            _filterChip('Diproses', ReportStatus.inProgress),
+            _filterChip('Selesai', ReportStatus.fixed),
+          ],
+        ),
+        const SizedBox(height: 14),
+        StreamBuilder<List<RoadReport>>(
+          stream: AppScope.of(context).reports.watchReports(),
+          initialData: const [],
+          builder: (context, snapshot) {
+            final all = snapshot.data ?? const <RoadReport>[];
+            final reports = _filter == null
+                ? all
+                : all.where((r) => r.status == _filter).toList();
+            if (reports.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: Text(
+                    'Tidak ada laporan untuk filter ini.',
+                    style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                  ),
+                ),
+              );
+            }
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.zero,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                mainAxisExtent: 250,
+              ),
+              itemCount: reports.length,
+              itemBuilder: (_, i) => GestureDetector(
+                onTap: () => showReportDetailSheet(context, reports[i]),
+                child: ReportCard(report: reports[i]),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _filterChip(String label, ReportStatus? status) {
+    final selected = _filter == status;
+    return GestureDetector(
+      onTap: () => setState(() => _filter = status),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : AppColors.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.divider,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? Colors.white : AppColors.textSecondary,
+          ),
+        ),
+      ),
     );
   }
 }

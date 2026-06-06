@@ -1,11 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../models/road_report.dart';
 import '../services/app_scope.dart';
 import '../theme/app_theme.dart';
+import 'report_detail_sheet.dart';
 
-class MapView extends StatelessWidget {
+class MapView extends StatefulWidget {
   const MapView({super.key});
+
+  @override
+  State<MapView> createState() => _MapViewState();
+}
+
+class _MapViewState extends State<MapView> {
+  final MapController _mapController = MapController();
+  LatLng? _lastCentered;
+
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  /// Pindahkan peta ke [target] setelah frame selesai, sekali per lokasi baru.
+  void _recenterIfNeeded(LatLng target) {
+    if (_lastCentered == target) return;
+    _lastCentered = target;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _mapController.move(target, 15);
+    });
+  }
 
   Color _severityColor(ReportSeverity s) {
     switch (s) {
@@ -40,9 +66,14 @@ class MapView extends StatelessWidget {
         initialData: const [],
         builder: (context, snapshot) {
           final reports = snapshot.data ?? const <RoadReport>[];
+          // Fokus ke laporan terbaru (paling depan), atau default bila kosong.
+          final target =
+              reports.isNotEmpty ? reports.first.location : DummyData.defaultCenter;
+          _recenterIfNeeded(target);
           return Stack(
             children: [
               FlutterMap(
+                mapController: _mapController,
                 options: const MapOptions(
                   initialCenter: DummyData.defaultCenter,
                   initialZoom: 13,
@@ -65,17 +96,15 @@ class MapView extends StatelessWidget {
                           point: r.location,
                           width: 44,
                           height: 44,
-                          child: _ReportPin(
-                            severityColor: _severityColor(r.severity),
-                            statusColor: _statusColor(r.status),
+                          child: GestureDetector(
+                            onTap: () => showReportDetailSheet(context, r),
+                            child: _ReportPin(
+                              severityColor: _severityColor(r.severity),
+                              statusColor: _statusColor(r.status),
+                              isFixed: r.status == ReportStatus.fixed,
+                            ),
                           ),
                         ),
-                      const Marker(
-                        point: DummyData.defaultCenter,
-                        width: 22,
-                        height: 22,
-                        child: _UserPin(),
-                      ),
                     ],
                   ),
                 ],
@@ -85,7 +114,10 @@ class MapView extends StatelessWidget {
                 top: 12,
                 child: Column(
                   children: [
-                    _MapAction(icon: Icons.my_location_rounded, onTap: () {}),
+                    _MapAction(
+                      icon: Icons.my_location_rounded,
+                      onTap: () => _mapController.move(target, 15),
+                    ),
                     const SizedBox(height: 8),
                     _MapAction(icon: Icons.layers_outlined, onTap: () {}),
                   ],
@@ -145,10 +177,18 @@ class MapView extends StatelessWidget {
 class _ReportPin extends StatelessWidget {
   final Color severityColor;
   final Color statusColor;
-  const _ReportPin({required this.severityColor, required this.statusColor});
+  final bool isFixed;
+  const _ReportPin({
+    required this.severityColor,
+    required this.statusColor,
+    required this.isFixed,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // Jika sudah diperbaiki: pin hijau dengan ikon centang.
+    final pinColor = isFixed ? AppColors.success : severityColor;
+    final icon = isFixed ? Icons.check_rounded : Icons.warning_rounded;
     return Stack(
       clipBehavior: Clip.none,
       children: [
@@ -156,19 +196,19 @@ class _ReportPin extends StatelessWidget {
           width: 36,
           height: 36,
           decoration: BoxDecoration(
-            color: severityColor,
+            color: pinColor,
             shape: BoxShape.circle,
             border: Border.all(color: Colors.white, width: 3),
             boxShadow: [
               BoxShadow(
-                color: severityColor.withValues(alpha: 0.4),
+                color: pinColor.withValues(alpha: 0.4),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
             ],
           ),
-          child: const Icon(
-            Icons.warning_rounded,
+          child: Icon(
+            icon,
             color: Colors.white,
             size: 18,
           ),
@@ -191,27 +231,6 @@ class _ReportPin extends StatelessWidget {
   }
 }
 
-class _UserPin extends StatelessWidget {
-  const _UserPin();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.blueAccent,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.blueAccent.withValues(alpha: 0.5),
-            blurRadius: 12,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _MapAction extends StatelessWidget {
   final IconData icon;

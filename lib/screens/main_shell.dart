@@ -16,12 +16,12 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    MapScreen(),
-    SizedBox(), // placeholder — FAB opens modal
-    HistoryScreen(),
-    ProfileScreen(),
+  late final List<Widget> _screens = [
+    HomeScreen(onSeeMap: () => setState(() => _currentIndex = 1)),
+    const MapScreen(),
+    const SizedBox(), // placeholder — FAB opens modal
+    const HistoryScreen(),
+    const ProfileScreen(),
   ];
 
   void _onNavTap(int index) {

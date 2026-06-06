@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../models/road_report.dart';
+import '../services/app_scope.dart';
 import '../theme/app_theme.dart';
 
 class StatsRow extends StatelessWidget {
@@ -6,38 +8,54 @@ class StatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: const [
-        Expanded(
-          child: _StatCard(
-            icon: Icons.report_problem_rounded,
-            iconColor: AppColors.danger,
-            iconBg: Color(0xFFFEE2E2),
-            value: '128',
-            label: 'Aktif',
-          ),
-        ),
-        SizedBox(width: 12),
-        Expanded(
-          child: _StatCard(
-            icon: Icons.handyman_rounded,
-            iconColor: AppColors.warning,
-            iconBg: Color(0xFFFEF3C7),
-            value: '34',
-            label: 'Diproses',
-          ),
-        ),
-        SizedBox(width: 12),
-        Expanded(
-          child: _StatCard(
-            icon: Icons.verified_rounded,
-            iconColor: AppColors.success,
-            iconBg: Color(0xFFD1FAE5),
-            value: '512',
-            label: 'Selesai',
-          ),
-        ),
-      ],
+    return StreamBuilder<List<RoadReport>>(
+      stream: AppScope.of(context).reports.watchReports(),
+      initialData: const [],
+      builder: (context, snapshot) {
+        final reports = snapshot.data ?? const <RoadReport>[];
+        final aktif = reports
+            .where((r) => r.status == ReportStatus.pending)
+            .length;
+        final diproses = reports
+            .where((r) => r.status == ReportStatus.inProgress)
+            .length;
+        final selesai = reports
+            .where((r) => r.status == ReportStatus.fixed)
+            .length;
+        return Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                icon: Icons.report_problem_rounded,
+                iconColor: AppColors.danger,
+                iconBg: const Color(0xFFFEE2E2),
+                value: '$aktif',
+                label: 'Aktif',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatCard(
+                icon: Icons.handyman_rounded,
+                iconColor: AppColors.warning,
+                iconBg: const Color(0xFFFEF3C7),
+                value: '$diproses',
+                label: 'Diproses',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatCard(
+                icon: Icons.verified_rounded,
+                iconColor: AppColors.success,
+                iconBg: const Color(0xFFD1FAE5),
+                value: '$selesai',
+                label: 'Selesai',
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

@@ -9,7 +9,7 @@ import 'services/app_scope.dart';
 import 'services/report_repository.dart';
 import 'theme/app_theme.dart';
 
-const bool kUseFirestore = false;
+const bool kUseFirestore = true;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
