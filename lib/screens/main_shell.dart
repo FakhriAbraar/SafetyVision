@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'home_screen.dart';
@@ -5,6 +7,7 @@ import 'map_screen.dart';
 import 'upload_report_screen.dart';
 import 'history_screen.dart';
 import 'profile_screen.dart';
+import 'resolve_report_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -24,14 +27,6 @@ class _MainShellState extends State<MainShell> {
     const ProfileScreen(),
   ];
 
-  void _onNavTap(int index) {
-    if (index == 2) {
-      _openReportSheet();
-      return;
-    }
-    setState(() => _currentIndex = index);
-  }
-
   void _openReportSheet() {
     showModalBottomSheet(
       context: context,
@@ -41,8 +36,38 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
+  void _openResolveSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const ResolveReportScreen(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return _buildScaffold(false);
+    }
+    
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      builder: (context, snapshot) {
+        bool isAdmin = false;
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final data = snapshot.data!.data() as Map<String, dynamic>?;
+          if (data?['role'] == 'admin') {
+            isAdmin = true;
+          }
+        }
+        return _buildScaffold(isAdmin);
+      },
+    );
+  }
+
+  Widget _buildScaffold(bool isAdmin) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: IndexedStack(
@@ -51,7 +76,18 @@ class _MainShellState extends State<MainShell> {
       ),
       bottomNavigationBar: _BottomNavBar(
         currentIndex: _currentIndex,
-        onTap: _onNavTap,
+        onTap: (index) {
+          if (index == 2) {
+            if (isAdmin) {
+              _openResolveSheet();
+            } else {
+              _openReportSheet();
+            }
+            return;
+          }
+          setState(() => _currentIndex = index);
+        },
+        isAdmin: isAdmin,
       ),
     );
   }
@@ -60,10 +96,12 @@ class _MainShellState extends State<MainShell> {
 class _BottomNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
+  final bool isAdmin;
 
   const _BottomNavBar({
     required this.currentIndex,
     required this.onTap,
+    required this.isAdmin,
   });
 
   @override
@@ -97,7 +135,10 @@ class _BottomNavBar extends StatelessWidget {
                 isActive: currentIndex == 1,
                 onTap: () => onTap(1),
               ),
-              _FABNavItem(onTap: () => onTap(2)),
+              _FABNavItem(
+                onTap: () => onTap(2),
+                isAdmin: isAdmin,
+              ),
               _NavItem(
                 icon: Icons.history_rounded,
                 label: 'Riwayat',
@@ -203,7 +244,8 @@ class _NavItem extends StatelessWidget {
 
 class _FABNavItem extends StatelessWidget {
   final VoidCallback onTap;
-  const _FABNavItem({required this.onTap});
+  final bool isAdmin;
+  const _FABNavItem({required this.onTap, required this.isAdmin});
 
   @override
   Widget build(BuildContext context) {
@@ -234,13 +276,15 @@ class _FABNavItem extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: const Icon(Icons.add_rounded,
-                    color: Colors.white, size: 26),
+                child: Icon(
+                  isAdmin ? Icons.check_circle_rounded : Icons.add_rounded,
+                  color: Colors.white, size: 26,
+                ),
               ),
             ),
-            const Text(
-              'Laporkan',
-              style: TextStyle(
+            Text(
+              isAdmin ? 'Selesaikan' : 'Laporkan',
+              style: const TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
                 color: AppColors.primary,

@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import '../models/road_report.dart';
 import '../theme/app_theme.dart';
+import '../services/db_service.dart';
 
 class ReportCard extends StatelessWidget {
   final RoadReport report;
@@ -55,17 +57,42 @@ class ReportCard extends StatelessWidget {
   }
 
   Widget _buildImage(Color color) {
-    final path = report.imagePath;
-    if (path != null && path.isNotEmpty && File(path).existsSync()) {
-      return Image.file(
-        File(path),
-        height: 90,
-        width: double.infinity,
-        fit: BoxFit.cover,
-        errorBuilder: (_, error, stack) => _imagePlaceholder(color),
-      );
-    }
-    return _imagePlaceholder(color);
+    return FutureBuilder<List<String>>(
+      future: DbService().fetchImages(report.id),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _imagePlaceholder(color);
+        }
+        
+        final images = snapshot.data;
+        if (images == null || images.isEmpty) {
+          final path = report.imagePath;
+          if (path != null && path.isNotEmpty && File(path).existsSync()) {
+            return Image.file(
+              File(path),
+              height: 90,
+              width: double.infinity,
+              fit: BoxFit.cover,
+              errorBuilder: (_, error, stack) => _imagePlaceholder(color),
+            );
+          }
+          return _imagePlaceholder(color);
+        }
+
+        try {
+          final bytes = base64Decode(images.first);
+          return Image.memory(
+            bytes,
+            height: 90,
+            width: double.infinity,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _imagePlaceholder(color),
+          );
+        } catch (e) {
+          return _imagePlaceholder(color);
+        }
+      },
+    );
   }
 
   Widget _imagePlaceholder(Color color) {

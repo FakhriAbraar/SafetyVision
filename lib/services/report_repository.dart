@@ -6,10 +6,11 @@ import '../models/road_report.dart';
 
 abstract class ReportRepository {
   Stream<List<RoadReport>> watchReports();
-  Future<void> addReport(RoadReport report);
+  Future<String> addReport(RoadReport report);
   Future<void> updateStatus(String id, ReportStatus status);
   // Tambahan fungsi upvoteReport
   Future<void> upvoteReport(String id);
+  Future<void> deleteReport(String id);
 }
 
 class DummyReportRepository implements ReportRepository {
@@ -28,9 +29,10 @@ class DummyReportRepository implements ReportRepository {
   }
 
   @override
-  Future<void> addReport(RoadReport report) async {
+  Future<String> addReport(RoadReport report) async {
     _reports.insert(0, report);
     _controller.add(List.unmodifiable(_reports));
+    return report.id;
   }
 
   @override
@@ -42,6 +44,7 @@ class DummyReportRepository implements ReportRepository {
       id: old.id,
       title: old.title,
       address: old.address,
+      description: old.description,
       latitude: old.latitude,
       longitude: old.longitude,
       severity: old.severity,
@@ -65,6 +68,7 @@ class DummyReportRepository implements ReportRepository {
       id: old.id,
       title: old.title,
       address: old.address,
+      description: old.description,
       latitude: old.latitude,
       longitude: old.longitude,
       severity: old.severity,
@@ -76,6 +80,12 @@ class DummyReportRepository implements ReportRepository {
       userName: old.userName,
       createdAt: old.createdAt,
     );
+    _controller.add(List.unmodifiable(_reports));
+  }
+
+  @override
+  Future<void> deleteReport(String id) async {
+    _reports.removeWhere((r) => r.id == id);
     _controller.add(List.unmodifiable(_reports));
   }
 }
@@ -102,8 +112,9 @@ class FirestoreReportRepository implements ReportRepository {
   }
 
   @override
-  Future<void> addReport(RoadReport report) async {
-    await _ref.add(report.toFirestore());
+  Future<String> addReport(RoadReport report) async {
+    final docRef = await _ref.add(report.toFirestore());
+    return docRef.id;
   }
 
   @override
@@ -123,5 +134,10 @@ class FirestoreReportRepository implements ReportRepository {
     await _ref.doc(id).update({
       'votes': FieldValue.increment(1),
     });
+  }
+
+  @override
+  Future<void> deleteReport(String id) async {
+    await _ref.doc(id).delete();
   }
 }

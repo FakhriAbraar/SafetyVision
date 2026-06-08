@@ -1,23 +1,155 @@
+import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../services/db_service.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
+import 'edit_profile_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Ambil data user yang sedang login
-    final user = FirebaseAuth.instance.currentUser;
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
 
+class _ProfileScreenState extends State<ProfileScreen> {
+  User? _user;
+  String? _profilePicBase64;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    await AuthService.reloadUser();
+    final user = FirebaseAuth.instance.currentUser;
+    setState(() => _user = user);
+    
+    if (user != null) {
+      final pic = await DbService().fetchProfilePicture(user.uid);
+      if (mounted) {
+        setState(() => _profilePicBase64 = pic);
+      }
+    }
+  }
+
+  void _showHelpDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Bantuan', style: TextStyle(fontWeight: FontWeight.w700)),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Jika Anda mengalami masalah, silakan hubungi kami melalui:', style: TextStyle(color: AppColors.textSecondary)),
+            SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.phone, color: AppColors.primary, size: 20),
+                SizedBox(width: 8),
+                Text('+62 822-4584-6763', style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+            SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.email, color: AppColors.primary, size: 20),
+                SizedBox(width: 8),
+                Text('alden@gmail.com', style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Tutup', style: TextStyle(color: AppColors.primary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAboutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Tentang Aplikasi', style: TextStyle(fontWeight: FontWeight.w700)),
+        content: const Text(
+          'SafeVision adalah aplikasi pelaporan kerusakan jalan yang bertujuan untuk memudahkan masyarakat dalam melaporkan jalan berlubang, rusak, atau fasilitas publik yang membutuhkan perbaikan. Bersama-sama mewujudkan jalan yang aman dan nyaman.',
+          style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Tutup', style: TextStyle(color: AppColors.primary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmSignOut(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Logout akun?',
+          style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary),
+        ),
+        content: const Text(
+          'Kamu yakin ingin keluar dari akun ini?',
+          style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Tidak',
+                style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await AuthService.signOut();
+              if (!context.mounted) return;
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (_) => false,
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.danger,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              elevation: 0,
+            ),
+            child: const Text('Ya'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SingleChildScrollView(
         child: Column(
           children: [
-            _buildProfileHeader(user),
+            _buildProfileHeader(_user),
             const SizedBox(height: 20),
             _buildStatsRow(),
             const SizedBox(height: 20),
@@ -76,9 +208,16 @@ class ProfileScreen extends StatelessWidget {
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 3),
                       color: Colors.white.withValues(alpha: 0.2),
+                      image: _profilePicBase64 != null
+                          ? DecorationImage(
+                              image: MemoryImage(base64Decode(_profilePicBase64!)),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
                     ),
-                    child: const Icon(Icons.person_rounded,
-                        size: 44, color: Colors.white70),
+                    child: _profilePicBase64 == null
+                        ? const Icon(Icons.person_rounded, size: 44, color: Colors.white70)
+                        : null,
                   ),
                   Positioned(
                     bottom: 0,
@@ -112,8 +251,7 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(20),
@@ -121,8 +259,7 @@ class ProfileScreen extends StatelessWidget {
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.bolt_rounded,
-                        color: AppColors.accent, size: 16),
+                    Icon(Icons.bolt_rounded, color: AppColors.accent, size: 16),
                     SizedBox(width: 4),
                     Text('120 Poin',
                         style: TextStyle(
@@ -156,16 +293,22 @@ class ProfileScreen extends StatelessWidget {
 
   Widget _buildMenuSection(BuildContext context) {
     final items = [
-      _MenuItem(Icons.person_outline_rounded, 'Edit Profil', () {}),
+      _MenuItem(Icons.person_outline_rounded, 'Edit Profil', () async {
+        final changed = await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+        );
+        if (changed == true) {
+          _loadData();
+        }
+      }),
       _MenuItem(Icons.notifications_outlined, 'Notifikasi', () {}),
-      _MenuItem(Icons.location_on_outlined, 'Lokasi Favorit', () {}),
-      _MenuItem(Icons.shield_outlined, 'Privasi & Keamanan', () {}),
-      _MenuItem(Icons.help_outline_rounded, 'Bantuan', () {}),
-      _MenuItem(Icons.info_outline_rounded, 'Tentang Aplikasi', () {}),
+      _MenuItem(Icons.help_outline_rounded, 'Bantuan', () => _showHelpDialog(context)),
+      _MenuItem(Icons.info_outline_rounded, 'Tentang Aplikasi', () => _showAboutDialog(context)),
       _MenuItem(
         Icons.logout_rounded,
         'Keluar',
-            () => _confirmSignOut(context),
+        () => _confirmSignOut(context),
         isDestructive: true,
       ),
     ];
@@ -187,8 +330,7 @@ class ProfileScreen extends StatelessWidget {
                 GestureDetector(
                   onTap: item.onTap,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     child: Row(
                       children: [
                         Container(
@@ -228,60 +370,11 @@ class ProfileScreen extends StatelessWidget {
                   ),
                 ),
                 if (!isLast)
-                  const Divider(
-                      height: 1, indent: 64, color: AppColors.divider),
+                  const Divider(height: 1, indent: 64, color: AppColors.divider),
               ],
             );
           }),
         ),
-      ),
-    );
-  }
-
-  void _confirmSignOut(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape:
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Keluar',
-          style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary),
-        ),
-        content: const Text(
-          'Kamu yakin ingin keluar dari akun ini?',
-          style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Batal',
-                style: TextStyle(color: AppColors.textSecondary)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await AuthService.signOut();
-              if (!context.mounted) return;
-              // AuthGate di main.dart akan otomatis redirect ke LoginScreen
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    (_) => false,
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.danger,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-              elevation: 0,
-            ),
-            child: const Text('Keluar'),
-          ),
-        ],
       ),
     );
   }
@@ -313,8 +406,7 @@ class _StatTile extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             label,
-            style: const TextStyle(
-                fontSize: 11, color: AppColors.textSecondary),
+            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
           ),
         ],
       ),

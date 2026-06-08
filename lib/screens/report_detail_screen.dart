@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../models/road_report.dart';
+import '../services/db_service.dart';
 import '../services/app_scope.dart';
 import '../theme/app_theme.dart';
 
@@ -197,7 +199,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                     ),
                   ),
 
-                  // 5. Lokasi Alamat
+                  // 5. Lokasi Alamat & Deskripsi
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Row(
@@ -212,6 +214,13 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                               Text(report.address, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.4)),
                               Text('${report.latitude.toStringAsFixed(5)}, ${report.longitude.toStringAsFixed(5)}',
                                   style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                              const SizedBox(height: 12),
+                              const Text('Deskripsi:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                              const SizedBox(height: 4),
+                              Text(
+                                report.description,
+                                style: const TextStyle(fontSize: 14, color: AppColors.textPrimary, height: 1.5),
+                              ),
                             ],
                           ),
                         ),
@@ -223,6 +232,54 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                     padding: EdgeInsets.symmetric(vertical: 16),
                     child: Divider(),
                   ),
+
+                  // Tambahan Balasan Admin Jika Sudah Selesai
+                  if (isFixed)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.verified_rounded, color: AppColors.success),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Balasan Admin: Perbaikan Selesai',
+                                      style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.success, fontSize: 15),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 16.0),
+                              child: Text(
+                                'Tim terkait telah menangani dan menyelesaikan masalah pada laporan ini. Berikut adalah bukti foto perbaikan yang telah dilakukan:',
+                                style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: _buildResolvedPhotos(200),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
 
                   // 6. Bagian Komentar
                   const Padding(
@@ -306,16 +363,131 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
   }
 
   Widget _buildPhoto(double maxHeight) {
-    final path = report.imagePath;
-    if (path != null && path.isNotEmpty && File(path).existsSync()) {
-      return Container(
-        width: double.infinity,
-        constraints: BoxConstraints(maxHeight: maxHeight),
-        color: Colors.black,
-        child: Image.file(File(path), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _photoPlaceholder()),
-      );
-    }
-    return _photoPlaceholder();
+    return FutureBuilder<List<String>>(
+      future: DbService().fetchImages(report.id),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Container(
+            height: maxHeight,
+            width: double.infinity,
+            color: AppColors.divider.withValues(alpha: 0.2),
+            child: const Center(child: CircularProgressIndicator()),
+          );
+        }
+        
+        final images = snapshot.data;
+        if (images == null || images.isEmpty) {
+          final path = report.imagePath;
+          if (path != null && path.isNotEmpty && File(path).existsSync()) {
+            return Container(
+              width: double.infinity,
+              constraints: BoxConstraints(maxHeight: maxHeight),
+              color: Colors.black,
+              child: Image.file(File(path), fit: BoxFit.cover, errorBuilder: (_, __, ___) => _photoPlaceholder()),
+            );
+          }
+          return _photoPlaceholder();
+        }
+
+        return Container(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          color: Colors.black,
+          child: PageView.builder(
+            itemCount: images.length,
+            itemBuilder: (context, index) {
+              try {
+                final bytes = base64Decode(images[index]);
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.memory(bytes, fit: BoxFit.cover),
+                    if (images.length > 1)
+                      Positioned(
+                        bottom: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${index + 1}/${images.length}',
+                            style: const TextStyle(color: Colors.white, fontSize: 12),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              } catch (e) {
+                return _photoPlaceholder();
+              }
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildResolvedPhotos(double maxHeight) {
+    return FutureBuilder<List<String>>(
+      future: DbService().fetchResolvedImages(report.id),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Container(
+            height: maxHeight,
+            width: double.infinity,
+            color: AppColors.success.withValues(alpha: 0.1),
+            child: const Center(child: CircularProgressIndicator(color: AppColors.success)),
+          );
+        }
+        
+        final images = snapshot.data;
+        if (images == null || images.isEmpty) {
+          return Container(
+            height: maxHeight, width: double.infinity, color: AppColors.success.withValues(alpha: 0.1),
+            child: const Center(child: Text('Tidak ada foto bukti', style: TextStyle(color: AppColors.success))),
+          );
+        }
+
+        return Container(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          color: Colors.black,
+          child: PageView.builder(
+            itemCount: images.length,
+            itemBuilder: (context, index) {
+              try {
+                final bytes = base64Decode(images[index]);
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.memory(bytes, fit: BoxFit.cover),
+                    if (images.length > 1)
+                      Positioned(
+                        bottom: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black54,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${index + 1}/${images.length}',
+                            style: const TextStyle(color: Colors.white, fontSize: 12),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              } catch (e) {
+                return _photoPlaceholder();
+              }
+            },
+          ),
+        );
+      },
+    );
   }
 
   Widget _photoPlaceholder() {

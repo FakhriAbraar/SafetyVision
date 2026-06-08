@@ -11,8 +11,8 @@ import '../services/auth_service.dart';
 import '../services/location_service.dart';
 import '../theme/app_theme.dart';
 import 'camera_screen.dart';
-
-const String geminiApiKey = 'KEY_HERE';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import '../services/db_service.dart';
 
 class UploadReportScreen extends StatefulWidget {
   const UploadReportScreen({super.key});
@@ -144,18 +144,20 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
     final user = AuthService.currentUser;
     final title = _titleController.text.trim();
     final address = _addressController.text.trim();
+    final desc = _descController.text.trim();
     final report = RoadReport(
       id: '',
       title: title.isEmpty ? 'Laporan Kerusakan' : title,
       address: address.isEmpty ? loc.address : address,
+      description: desc.isEmpty ? 'Tidak ada deskripsi' : desc,
       latitude: loc.latitude,
       longitude: loc.longitude,
       severity: _severityFromLabel(_selectedSeverity),
       status: ReportStatus.pending,
       reportedAgo: 'baru saja',
       votes: 0,
-      // Simpan path foto lokal HP ke Firestore (bukan URL/upload gambar).
-      imagePath: _photos.isNotEmpty ? _photos.first.path : null,
+      // Foto secara eksklusif hanya di-upload dan disimpan di database Neon
+      imagePath: null,
       // Relasi laporan ke user yang sedang login.
       userId: user?.uid,
       userName: (user?.displayName?.trim().isNotEmpty ?? false)
@@ -165,11 +167,29 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
     );
 
     try {
-      await repo.addReport(report);
+      final reportId = await repo.addReport(report);
+      // Upload photos to Neon
+      try {
+        if (_photos.isNotEmpty) {
+          final photoFiles = _photos.map((x) => File(x.path)).toList();
+          await DbService().uploadImages(reportId, photoFiles);
+        }
+      } catch (neonError) {
+        // Rollback data di Firebase jika upload foto ke Neon gagal
+        await repo.deleteReport(reportId);
+        rethrow;
+      }
+
       if (!mounted) return;
-      navigator.pop();
-      _showSnack('Laporan berhasil dikirim!', AppColors.success,
+      // Tampilkan pesan berhasil
+      _showSnack('Laporan berhasil terkirim!', AppColors.success,
           Icons.check_circle_rounded);
+          
+      // Tunggu sesaat agar pengguna sempat melihat pesan sebelum popup ditutup
+      await Future.delayed(const Duration(milliseconds: 1200));
+      
+      if (!mounted) return;
+      navigator.pop(); // Tutup popup setelah pesan muncul
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
@@ -634,7 +654,7 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
     try {
       final model = GenerativeModel(
         model: 'gemini-2.5-flash',
-        apiKey: geminiApiKey,
+        apiKey: dotenv.env['GEMINI_API_KEY'] ?? '',
         generationConfig: GenerationConfig(
           responseMimeType: 'application/json',
           responseSchema: Schema.object(
