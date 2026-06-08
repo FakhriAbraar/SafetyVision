@@ -6,8 +6,8 @@ import '../theme/app_theme.dart';
 import '../widgets/home_app_bar.dart';
 import '../widgets/map_view.dart';
 import '../widgets/report_card.dart';
-import '../widgets/report_detail_sheet.dart';
 import '../widgets/stats_row.dart';
+import 'report_detail_screen.dart'; // Import screen detail yang baru
 
 class HomeScreen extends StatelessWidget {
   final VoidCallback? onSeeMap;
@@ -322,8 +322,6 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-/// Bagian "Laporan Terbaru": punya filter status (Semua/Aktif/Diproses/Selesai)
-/// dan grid kartu yang bisa diketuk untuk membuka popup detail.
 class _RecentReports extends StatefulWidget {
   const _RecentReports();
 
@@ -366,9 +364,15 @@ class _RecentReportsState extends State<_RecentReports> {
           initialData: const [],
           builder: (context, snapshot) {
             final all = snapshot.data ?? const <RoadReport>[];
-            final reports = _filter == null
-                ? all
+
+            // 1. Lakukan Filtering
+            List<RoadReport> reports = _filter == null
+                ? List.from(all)
                 : all.where((r) => r.status == _filter).toList();
+
+            // 2. Lakukan Sorting (Berdasarkan upvote terbanyak)
+            reports.sort((a, b) => b.votes.compareTo(a.votes));
+
             if (reports.isEmpty) {
               return const Padding(
                 padding: EdgeInsets.symmetric(vertical: 20),
@@ -392,7 +396,15 @@ class _RecentReportsState extends State<_RecentReports> {
               ),
               itemCount: reports.length,
               itemBuilder: (_, i) => GestureDetector(
-                onTap: () => showReportDetailSheet(context, reports[i]),
+                // Membuka ReportDetailScreen alih-alih BottomSheet
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ReportDetailScreen(report: reports[i]),
+                    ),
+                  );
+                },
                 child: ReportCard(report: reports[i]),
               ),
             );
