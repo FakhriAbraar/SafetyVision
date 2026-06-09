@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/road_report.dart';
 import '../services/db_service.dart';
 import '../services/app_scope.dart';
@@ -51,8 +53,6 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
   late ReportStatus _status = widget.report.status;
   bool _updating = false;
 
-  // State dummy untuk komentar (Di tahap produksi, ambil dari Firestore)
-  final List<String> _comments = [];
   final TextEditingController _commentController = TextEditingController();
 
   RoadReport get report => widget.report;
@@ -88,13 +88,43 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
     }
   }
 
-  void _addComment() {
-    if (_commentController.text.trim().isEmpty) return;
-    setState(() {
-      _comments.add(_commentController.text.trim());
-      _commentController.clear();
-    });
-    // TODO: Simpan komentar ke Firestore di sini jika sudah ada backend-nya
+  Future<void> _addComment() async {
+    final text = _commentController.text.trim();
+    if (text.isEmpty) return;
+
+    _commentController.clear();
+    FocusScope.of(context).unfocus(); // Menutup keyboard
+
+    try {
+      // Ambil data user yang sedang login saat ini dari Firebase Auth
+      final currentUser = FirebaseAuth.instance.currentUser;
+
+      String userName = 'Warga';
+      if (currentUser != null) {
+        if (currentUser.displayName != null && currentUser.displayName!.trim().isNotEmpty) {
+          userName = currentUser.displayName!;
+        } else if (currentUser.email != null && currentUser.email!.isNotEmpty) {
+          // Jika displayName kosong, gunakan username dari email (sebelum tanda @)
+          userName = currentUser.email!.split('@')[0];
+        }
+      }
+
+      await FirebaseFirestore.instance
+          .collection('reports')
+          .doc(widget.report.id)
+          .collection('comments')
+          .add({
+        'text': text,
+        'userName': userName, // Nama akun dinamis berdasarkan yang login
+        'userId': currentUser?.uid, // Menyimpan UID untuk referensi data
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal mengirim komentar: $e')),
+      );
+    }
   }
 
   @override
@@ -287,36 +317,71 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                     child: Text('Komentar Diskusi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
 
-                  if (_comments.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      child: Text('Belum ada komentar. Jadilah yang pertama berkomentar!', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
-                    ),
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('reports')
+                        .doc(report.id)
+                        .collection('comments')
+                        .orderBy('createdAt', descending: false)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Padding(
+                          padding: EdgeInsets.all(20.0),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
 
-                  ..._comments.map((comment) => Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.divider)),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.account_circle, color: AppColors.textMuted, size: 28),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('Warga', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                const SizedBox(height: 4),
-                                Text(comment, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                              ],
+                      if (snapshot.hasError) {
+                        return const Padding(
+                          padding: EdgeInsets.all(20.0),
+                          child: Text('Gagal memuat komentar.', style: TextStyle(color: AppColors.danger)),
+                        );
+                      }
+
+                      final docs = snapshot.data?.docs ?? [];
+
+                      if (docs.isEmpty) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                          child: Text('Belum ada komentar. Jadilah yang pertama berkomentar!', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                        );
+                      }
+
+                      return Column(
+                        children: docs.map((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          final text = data['text'] ?? '';
+                          final userName = data['userName'] ?? 'Warga';
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.divider)),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.account_circle, color: AppColors.textMuted, size: 28),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                        const SizedBox(height: 4),
+                                        Text(text, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                                      ],
+                                    ),
+                                  )
+                                ],
+                              ),
                             ),
-                          )
-                        ],
-                      ),
-                    ),
-                  )),
+                          );
+                        }).toList(),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
@@ -374,7 +439,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
             child: const Center(child: CircularProgressIndicator()),
           );
         }
-        
+
         final images = snapshot.data;
         if (images == null || images.isEmpty) {
           final path = report.imagePath;
@@ -441,7 +506,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
             child: const Center(child: CircularProgressIndicator(color: AppColors.success)),
           );
         }
-        
+
         final images = snapshot.data;
         if (images == null || images.isEmpty) {
           return Container(
