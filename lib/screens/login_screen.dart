@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import 'register_screen.dart';
 import 'main_shell.dart';
+import 'admin_screen.dart'; // Import halaman admin baru
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -27,7 +28,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
-    // Validasi sederhana sebelum hit Firebase
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
@@ -42,11 +42,29 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+      // 1. Proses autentikasi masuk ke Firebase Auth
       await AuthService.signIn(email: email, password: password);
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainShell()),
-      );
+
+      // 2. Mendapatkan informasi pengguna saat ini
+      final currentUser = FirebaseAuth.instance.currentUser;
+
+      if (currentUser != null) {
+        // 3. Mengambil role dari dokumen pengguna di Firestore
+        final role = await AuthService.getUserRole(currentUser.uid);
+
+        if (!mounted) return;
+
+        // 4. Pengalihan halaman berdasarkan hak akses/role
+        if (role == 'admin') {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const AdminScreen()),
+          );
+        } else {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const MainShell()),
+          );
+        }
+      }
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = AuthService.friendlyError(e));
     } catch (e) {
@@ -71,7 +89,6 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 40),
               _buildForm(),
               const SizedBox(height: 16),
-              // Error message box
               if (_errorMessage != null) _buildErrorBox(_errorMessage!),
               const SizedBox(height: 8),
               _buildLoginButton(),

@@ -1,7 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Tambahkan import Firestore
 
 class AuthService {
   static final FirebaseAuth _auth = FirebaseAuth.instance;
+  static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   /// Stream perubahan status login user
   static Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -18,8 +20,21 @@ class AuthService {
     }
   }
 
+  /// Ambil Role User dari Firestore
+  static Future<String> getUserRole(String uid) async {
+    try {
+      final doc = await _firestore.collection('users').doc(uid).get();
+      if (doc.exists && doc.data() != null) {
+        return doc.data()!['role'] ?? 'user';
+      }
+    } catch (e) {
+      // Abaikan error, kembalikan default 'user'
+    }
+    return 'user'; // Default role jika dokumen tidak ditemukan
+  }
+
   /// Login dengan email & password
-  /// Melempar [AuthException] jika gagal
+  /// Melempar [FirebaseAuthException] jika gagal
   static Future<UserCredential> signIn({
     required String email,
     required String password,
@@ -30,7 +45,7 @@ class AuthService {
     );
   }
 
-  /// Daftar akun baru dengan email & password
+  /// Daftar akun baru dengan email & password dan simpan ke Firestore
   static Future<UserCredential> register({
     required String name,
     required String email,
@@ -40,8 +55,21 @@ class AuthService {
       email: email.trim(),
       password: password,
     );
+
     // Simpan nama ke displayName
     await credential.user?.updateDisplayName(name.trim());
+
+    // SIMPAN DATA KE FIRESTORE (Pendekatan 1)
+    if (credential.user != null) {
+      await _firestore.collection('users').doc(credential.user!.uid).set({
+        'uid': credential.user!.uid,
+        'name': name.trim(),
+        'email': email.trim(),
+        'role': 'user', // <--- Default role saat baru daftar
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    }
+
     return credential;
   }
 
