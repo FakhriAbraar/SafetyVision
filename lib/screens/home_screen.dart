@@ -8,7 +8,7 @@ import '../widgets/map_view.dart';
 import '../widgets/report_card.dart';
 import '../widgets/stats_row.dart';
 import 'report_detail_screen.dart'; // Import screen detail yang baru
-
+import 'admin_screen.dart';
 class HomeScreen extends StatelessWidget {
   final VoidCallback? onSeeMap;
   const HomeScreen({super.key, this.onSeeMap});
@@ -26,7 +26,8 @@ class HomeScreen extends StatelessWidget {
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   _GreetingBanner(),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
+                  const _AdminBannerOption(),
                   const StatsRow(),
                   const SizedBox(height: 24),
                   _SectionHeader(
@@ -437,6 +438,71 @@ class _RecentReportsState extends State<_RecentReports> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _AdminBannerOption extends StatelessWidget {
+  const _AdminBannerOption();
+
+  @override
+  Widget build(BuildContext context) {
+    final user = AuthService.currentUser;
+    if (user == null) return const SizedBox.shrink();
+
+    return FutureBuilder<String>(
+      future: AuthService.getUserRole(user.uid),
+      builder: (context, snapshot) {
+        if (snapshot.hasData && snapshot.data == 'admin') {
+          return GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AdminScreen()),
+              );
+            },
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.admin_panel_settings_rounded, color: Colors.white, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Mode Admin Aktif',
+                          style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.primary, fontSize: 14),
+                        ),
+                        Text(
+                          'Ketuk untuk membuka Dashboard Analitik',
+                          style: TextStyle(fontWeight: FontWeight.w500, color: AppColors.textSecondary, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.primary, size: 16),
+                ],
+              ),
+            ),
+          );
+        }
+        return const SizedBox.shrink();
+      },
     );
   }
 }

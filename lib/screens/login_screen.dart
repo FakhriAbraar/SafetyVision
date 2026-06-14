@@ -54,16 +54,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (!mounted) return;
 
-        // 4. Pengalihan halaman berdasarkan hak akses/role
-        if (role == 'admin') {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const AdminScreen()),
-          );
-        } else {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const MainShell()),
-          );
-        }
+        // 4. Pengalihan halaman ke layar utama
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainShell()),
+        );
       }
     } on FirebaseAuthException catch (e) {
       setState(() => _errorMessage = AuthService.friendlyError(e));

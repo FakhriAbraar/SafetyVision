@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/road_report.dart';
 import '../services/app_scope.dart';
+import '../services/auth_service.dart';
 import '../services/report_repository.dart';
 import '../theme/app_theme.dart';
 
@@ -79,8 +80,27 @@ class ReportDetailSheet extends StatefulWidget {
 class _ReportDetailSheetState extends State<ReportDetailSheet> {
   late ReportStatus _status = widget.report.status;
   bool _updating = false;
+  bool _isAdmin = false;
 
   RoadReport get report => widget.report;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAdminRole();
+  }
+
+  Future<void> _checkAdminRole() async {
+    final user = AuthService.currentUser;
+    if (user != null) {
+      final role = await AuthService.getUserRole(user.uid);
+      if (mounted) {
+        setState(() {
+          _isAdmin = (role == 'admin');
+        });
+      }
+    }
+  }
 
   Future<void> _setStatus(ReportStatus status) async {
     if (status == _status || _updating) return;
@@ -178,36 +198,38 @@ class _ReportDetailSheetState extends State<ReportDetailSheet> {
                         ),
                         const SizedBox(height: 16),
                         // Ubah status laporan (tersimpan ke Firestore)
-                        Row(
-                          children: [
-                            const Text(
-                              'Ubah Status',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textSecondary),
-                            ),
-                            const SizedBox(width: 8),
-                            if (_updating)
-                              const SizedBox(
-                                width: 12,
-                                height: 12,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: AppColors.primary),
+                        if (_isAdmin) ...[
+                          Row(
+                            children: [
+                              const Text(
+                                'Ubah Status',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textSecondary),
                               ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            _statusOption(ReportStatus.pending, 'Aktif'),
-                            const SizedBox(width: 8),
-                            _statusOption(ReportStatus.inProgress, 'Diproses'),
-                            const SizedBox(width: 8),
-                            _statusOption(ReportStatus.fixed, 'Selesai'),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
+                              const SizedBox(width: 8),
+                              if (_updating)
+                                const SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: AppColors.primary),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              _statusOption(ReportStatus.pending, 'Aktif'),
+                              const SizedBox(width: 8),
+                              _statusOption(ReportStatus.inProgress, 'Diproses'),
+                              const SizedBox(width: 8),
+                              _statusOption(ReportStatus.fixed, 'Selesai'),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         // Pelapor (user yang upload)
                         Row(
                           children: [
