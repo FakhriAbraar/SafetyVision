@@ -53,10 +53,86 @@ class ReportDetailScreen extends StatefulWidget {
 class _ReportDetailScreenState extends State<ReportDetailScreen> {
   late ReportStatus _status = widget.report.status;
   bool _updating = false;
+  String _currentUserRole = 'user';
 
   final TextEditingController _commentController = TextEditingController();
 
   RoadReport get report => widget.report;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkCurrentUserRole();
+  }
+
+  Future<void> _checkCurrentUserRole() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final role = await AuthService.getUserRole(user.uid);
+      if (mounted) {
+        setState(() {
+          _currentUserRole = role;
+        });
+      }
+    }
+  }
+
+  // Dialog Konfirmasi Hapus Seluruh Postingan Laporan
+  void _showDeleteReportConfirmation() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.danger),
+            SizedBox(width: 8),
+            Text('Hapus Postingan?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          ],
+        ),
+        content: const Text('Apakah Anda yakin ingin menghapus seluruh postingan laporan ini? Tindakan ini tidak dapat dibatalkan.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.danger,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _deleteReport();
+            },
+            child: const Text('Hapus Permanen', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Fungsi Eksekusi Hapus Postingan
+  Future<void> _deleteReport() async {
+    try {
+      await AppScope.of(context).reports.deleteReport(report.id);
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Postingan laporan berhasil dihapus secara permanen.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal menghapus postingan: $e'), backgroundColor: AppColors.danger),
+      );
+    }
+  }
 
   Future<String?> _fetchDisplayName(String? userId) async {
     if (userId == null || userId.isEmpty) return null;
@@ -70,7 +146,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
   }
 
   Future<void> _onRefresh() async {
-    setState(() {}); // Memicu ulang FutureBuilder
+    setState(() {});
   }
 
   Future<void> _setStatus(ReportStatus status) async {
@@ -109,10 +185,9 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
     if (text.isEmpty) return;
 
     _commentController.clear();
-    FocusScope.of(context).unfocus(); // Menutup keyboard
+    FocusScope.of(context).unfocus();
 
     try {
-      // Ambil data user yang sedang login saat ini dari Firebase Auth
       final currentUser = FirebaseAuth.instance.currentUser;
 
       String userName = 'Warga';
@@ -120,7 +195,6 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
         if (currentUser.displayName != null && currentUser.displayName!.trim().isNotEmpty) {
           userName = currentUser.displayName!;
         } else if (currentUser.email != null && currentUser.email!.isNotEmpty) {
-          // Jika displayName kosong, gunakan username dari email (sebelum tanda @)
           userName = currentUser.email!.split('@')[0];
         }
       }
@@ -136,8 +210,8 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
           .collection('comments')
           .add({
         'text': text,
-        'userName': userName, // Nama akun dinamis berdasarkan yang login
-        'userId': currentUser?.uid, // Menyimpan UID untuk referensi data
+        'userName': userName,
+        'userId': currentUser?.uid,
         'role': role,
         'createdAt': FieldValue.serverTimestamp(),
       });
@@ -156,6 +230,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
     final statusLabel = reportStatusLabel(_status);
     final severityColor = reportSeverityColor(report.severity);
     final severityLabel = reportSeverityLabel(report.severity);
+    final isViewerAdmin = _currentUserRole == 'admin';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -164,6 +239,14 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
         backgroundColor: Colors.white,
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
+        actions: [
+          if (isViewerAdmin)
+            IconButton(
+              icon: const Icon(Icons.delete_forever_rounded, color: AppColors.danger, size: 24),
+              tooltip: 'Hapus Seluruh Postan',
+              onPressed: _showDeleteReportConfirmation,
+            ),
+        ],
       ),
       body: Column(
         children: [
@@ -177,351 +260,358 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                  // 1. Gambar
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: _buildPhoto(MediaQuery.of(context).size.height * 0.4),
-                    ),
-                  ),
-
-                  // 2. Info Judul & Severity
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            report.title,
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                          ),
-                        ),
-                        _badge(label: severityLabel, color: severityColor, icon: Icons.priority_high_rounded),
-                      ],
-                    ),
-                  ),
-
-                  // 3. Status Saat Ini
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                    child: _badge(
-                      label: statusLabel,
-                      color: statusColor,
-                      icon: isFixed ? Icons.check_circle_rounded : Icons.build_circle_rounded,
-                      filled: true,
-                    ),
-                  ),
-
-                  // 4. Info Pelapor & Waktu & Upvote
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Row(
-                      children: [
-                        FutureBuilder<String?>(
-                          future: report.userId != null ? DbService().fetchProfilePicture(report.userId!) : Future.value(null),
-                          builder: (context, snapshot) {
-                            final base64String = snapshot.data;
-                            if (base64String != null && base64String.isNotEmpty) {
-                              return Container(
-                                width: 36, height: 36,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(10),
-                                  image: DecorationImage(
-                                    image: MemoryImage(base64Decode(base64String)),
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              );
-                            }
-                            return Container(
-                              width: 36, height: 36,
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(colors: [AppColors.primary, AppColors.primaryDark]),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(Icons.person_rounded, color: Colors.white),
-                            );
-                          },
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              FutureBuilder<String?>(
-                                future: _fetchDisplayName(report.userId),
-                                builder: (context, snapshot) {
-                                  final name = snapshot.data ?? (report.userName?.isNotEmpty == true ? report.userName! : 'Anonim');
-                                  return Text(
-                                    name,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                                  );
-                                },
-                              ),
-                              Text(report.reportedAgo, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                            ],
-                          ),
-                        ),
-                        // Tombol Upvote fungsional
-                        ElevatedButton.icon(
-                          onPressed: _handleUpvote,
-                          icon: const Icon(Icons.thumb_up_alt_rounded, size: 16),
-                          label: Text('${report.votes}'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                            foregroundColor: AppColors.primary,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // 5. Lokasi Alamat & Deskripsi
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.location_on_rounded, size: 20, color: AppColors.danger),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(report.address, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.4)),
-                              Text('${report.latitude.toStringAsFixed(5)}, ${report.longitude.toStringAsFixed(5)}',
-                                  style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                              const SizedBox(height: 12),
-                              const Text('Deskripsi:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
-                              const SizedBox(height: 4),
-                              Text(
-                                report.description,
-                                style: const TextStyle(fontSize: 14, color: AppColors.textPrimary, height: 1.5),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Divider(),
-                  ),
-
-                  // Tambahan Balasan Admin Jika Sudah Selesai
-                  if (isFixed)
+                    // 1. Gambar
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.success.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Padding(
-                              padding: EdgeInsets.all(16.0),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.verified_rounded, color: AppColors.success),
-                                  SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'Balasan Admin: Perbaikan Selesai',
-                                      style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.success, fontSize: 15),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                              child: Text(
-                                report.resolutionDescription?.isNotEmpty == true 
-                                  ? report.resolutionDescription! 
-                                  : 'Tim terkait telah menangani dan menyelesaikan masalah pada laporan ini. Berikut adalah bukti foto perbaikan yang telah dilakukan:',
-                                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: _buildResolvedPhotos(200),
-                              ),
-                            ),
-                          ],
-                        ),
+                      padding: const EdgeInsets.all(16.0),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: _buildPhoto(MediaQuery.of(context).size.height * 0.4),
                       ),
                     ),
 
-                  // 6. Bagian Komentar
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    child: Text('Komentar Diskusi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
+                    // 2. Info Judul & Severity
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              report.title,
+                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                            ),
+                          ),
+                          _badge(label: severityLabel, color: severityColor, icon: Icons.priority_high_rounded),
+                        ],
+                      ),
+                    ),
 
-                  StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('reports')
-                        .doc(report.id)
-                        .collection('comments')
-                        .orderBy('createdAt', descending: false)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Padding(
-                          padding: EdgeInsets.all(20.0),
-                          child: Center(child: CircularProgressIndicator()),
-                        );
-                      }
+                    // 3. Status Saat Ini
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                      child: _badge(
+                        label: statusLabel,
+                        color: statusColor,
+                        icon: isFixed ? Icons.check_circle_rounded : Icons.build_circle_rounded,
+                        filled: true,
+                      ),
+                    ),
 
-                      if (snapshot.hasError) {
-                        return const Padding(
-                          padding: EdgeInsets.all(20.0),
-                          child: Text('Gagal memuat komentar.', style: TextStyle(color: AppColors.danger)),
-                        );
-                      }
-
-                      final docs = snapshot.data?.docs ?? [];
-
-                      if (docs.isEmpty) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                          child: Text('Belum ada komentar. Jadilah yang pertama berkomentar!', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
-                        );
-                      }
-
-                      return Column(
-                        children: docs.map((doc) {
-                          final data = doc.data() as Map<String, dynamic>;
-                          final text = data['text'] ?? '';
-                          final userName = data['userName'] ?? 'Warga';
-                          final userId = data['userId'] as String?;
-                          final role = data['role'] as String?;
-                          final isAdmin = role == 'admin';
-                          final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-                          final isMyComment = userId != null && userId == currentUserId;
-
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: isAdmin ? AppColors.primary.withValues(alpha: 0.05) : Colors.white, 
-                                borderRadius: BorderRadius.circular(12), 
-                                border: Border.all(color: isAdmin ? AppColors.primary.withValues(alpha: 0.3) : AppColors.divider)
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  FutureBuilder<String?>(
-                                    future: userId != null ? DbService().fetchProfilePicture(userId) : Future.value(null),
-                                    builder: (context, snapshot) {
-                                      final base64String = snapshot.data;
-                                      if (base64String != null && base64String.isNotEmpty) {
-                                        return Container(
-                                          width: 28, height: 28,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            image: DecorationImage(
-                                              image: MemoryImage(base64Decode(base64String)),
-                                              fit: BoxFit.cover,
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                      return const Icon(Icons.account_circle, color: AppColors.textMuted, size: 28);
-                                    },
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            FutureBuilder<String?>(
-                                              future: _fetchDisplayName(userId),
-                                              builder: (context, snapshot) {
-                                                final name = snapshot.data ?? userName;
-                                                return Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13));
-                                              },
-                                            ),
-                                            if (isAdmin) ...[
-                                              const SizedBox(width: 6),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: AppColors.primary,
-                                                  borderRadius: BorderRadius.circular(4),
-                                                ),
-                                                child: const Text('Admin', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                                              ),
-                                            ]
-                                          ],
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(text, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                                      ],
+                    // 4. Info Pelapor & Waktu & Upvote
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Row(
+                        children: [
+                          FutureBuilder<String?>(
+                            future: report.userId != null ? DbService().fetchProfilePicture(report.userId!) : Future.value(null),
+                            builder: (context, snapshot) {
+                              final base64String = snapshot.data;
+                              if (base64String != null && base64String.isNotEmpty) {
+                                return Container(
+                                  width: 36, height: 36,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(10),
+                                    image: DecorationImage(
+                                      image: MemoryImage(base64Decode(base64String)),
+                                      fit: BoxFit.cover,
                                     ),
                                   ),
-                                  if (isMyComment)
-                                    IconButton(
-                                      icon: const Icon(Icons.delete_outline, color: AppColors.danger, size: 18),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                      onPressed: () async {
-                                        final confirm = await showDialog<bool>(
-                                          context: context,
-                                          builder: (ctx) => AlertDialog(
-                                            title: const Text('Hapus Komentar?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                            content: const Text('Komentar ini akan dihapus secara permanen.'),
-                                            actions: [
-                                              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-                                              TextButton(
-                                                onPressed: () => Navigator.pop(ctx, true), 
-                                                child: const Text('Hapus', style: TextStyle(color: AppColors.danger))
+                                );
+                              }
+                              return Container(
+                                width: 36, height: 36,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(colors: [AppColors.primary, AppColors.primaryDark]),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(Icons.person_rounded, color: Colors.white),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                FutureBuilder<String?>(
+                                  future: _fetchDisplayName(report.userId),
+                                  builder: (context, snapshot) {
+                                    final name = snapshot.data ?? (report.userName?.isNotEmpty == true ? report.userName! : 'Anonim');
+                                    return Text(
+                                      name,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                                    );
+                                  },
+                                ),
+                                Text(report.reportedAgo, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                              ],
+                            ),
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: _handleUpvote,
+                            icon: const Icon(Icons.thumb_up_alt_rounded, size: 16),
+                            label: Text('${report.votes}'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                              foregroundColor: AppColors.primary,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // 5. Lokasi Alamat & Deskripsi
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.location_on_rounded, size: 20, color: AppColors.danger),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(report.address, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.4)),
+                                Text('${report.latitude.toStringAsFixed(5)}, ${report.longitude.toStringAsFixed(5)}',
+                                    style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                                const SizedBox(height: 12),
+                                const Text('Deskripsi:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                                const SizedBox(height: 4),
+                                Text(
+                                  report.description,
+                                  style: const TextStyle(fontSize: 14, color: AppColors.textPrimary, height: 1.5),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Divider(),
+                    ),
+
+                    // Balasan Admin Jika Sudah Selesai
+                    if (isFixed)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.success.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.all(16.0),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.verified_rounded, color: AppColors.success),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Balasan Admin: Perbaikan Selesai',
+                                        style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.success, fontSize: 15),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                                child: Text(
+                                  report.resolutionDescription?.isNotEmpty == true
+                                      ? report.resolutionDescription!
+                                      : 'Tim terkait telah menangani dan menyelesaikan masalah pada laporan ini. Berikut adalah bukti foto perbaikan yang telah dilakukan:',
+                                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: _buildResolvedPhotos(200),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                    // 6. Bagian Komentar
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      child: Text('Komentar Diskusi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
+
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('reports')
+                          .doc(report.id)
+                          .collection('comments')
+                      // HANYA MENGGUNAKAN SATU ORDER BY, SEHINGGA TIDAK BUTUH INDEX FIREBASE MANUAL
+                          .orderBy('createdAt', descending: false)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Padding(
+                            padding: EdgeInsets.all(20.0),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+
+                        if (snapshot.hasError) {
+                          return const Padding(
+                            padding: EdgeInsets.all(20.0),
+                            child: Text('Gagal memuat komentar.', style: TextStyle(color: AppColors.danger)),
+                          );
+                        }
+
+                        final docs = snapshot.data?.docs ?? [];
+
+                        if (docs.isEmpty) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                            child: Text('Belum ada komentar. Jadilah yang pertama berkomentar!', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                          );
+                        }
+
+                        return Column(
+                          children: docs.map((doc) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            final text = data['text'] ?? '';
+                            final userName = data['userName'] ?? 'Warga';
+                            final userId = data['userId'] as String?;
+                            final role = data['role'] as String?;
+
+                            final isCommentByAdmin = role == 'admin';
+                            final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+                            final isMyComment = userId != null && userId == currentUserId;
+
+                            // Bisa dihapus jika user adalah admin ATAU dia pembuat komentar tersebut
+                            final canDelete = isViewerAdmin || isMyComment;
+
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                    color: isCommentByAdmin ? AppColors.primary.withValues(alpha: 0.05) : Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                        color: isCommentByAdmin ? AppColors.primary.withValues(alpha: 0.3) : AppColors.divider
+                                    )
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    FutureBuilder<String?>(
+                                      future: userId != null ? DbService().fetchProfilePicture(userId) : Future.value(null),
+                                      builder: (context, snapshot) {
+                                        final base64String = snapshot.data;
+                                        if (base64String != null && base64String.isNotEmpty) {
+                                          return Container(
+                                            width: 28, height: 28,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              image: DecorationImage(
+                                                image: MemoryImage(base64Decode(base64String)),
+                                                fit: BoxFit.cover,
                                               ),
-                                            ],
-                                          ),
-                                        );
-                                        if (confirm == true) {
-                                          try {
-                                            await FirebaseFirestore.instance
-                                                .collection('reports')
-                                                .doc(report.id)
-                                                .collection('comments')
-                                                .doc(doc.id)
-                                                .delete();
-                                          } catch (e) {
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menghapus: $e')));
-                                            }
-                                          }
+                                            ),
+                                          );
                                         }
+                                        return const Icon(Icons.account_circle, color: AppColors.textMuted, size: 28);
                                       },
                                     ),
-                                ],
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              FutureBuilder<String?>(
+                                                future: _fetchDisplayName(userId),
+                                                builder: (context, snapshot) {
+                                                  final name = snapshot.data ?? userName;
+                                                  return Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13));
+                                                },
+                                              ),
+                                              if (isCommentByAdmin) ...[
+                                                const SizedBox(width: 6),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: AppColors.primary,
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: const Text('Admin', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(text, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                                        ],
+                                      ),
+                                    ),
+                                    // Tombol Delete Komentar
+                                    if (canDelete)
+                                      IconButton(
+                                        icon: const Icon(Icons.delete_outline, color: AppColors.danger, size: 18),
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(),
+                                        onPressed: () async {
+                                          final confirm = await showDialog<bool>(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              title: const Text('Hapus Komentar?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                              content: const Text('Komentar ini akan dihapus secara permanen.'),
+                                              actions: [
+                                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+                                                TextButton(
+                                                    onPressed: () => Navigator.pop(ctx, true),
+                                                    child: const Text('Hapus', style: TextStyle(color: AppColors.danger))
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirm == true) {
+                                            try {
+                                              await FirebaseFirestore.instance
+                                                  .collection('reports')
+                                                  .doc(report.id)
+                                                  .collection('comments')
+                                                  .doc(doc.id)
+                                                  .delete();
+                                            } catch (e) {
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menghapus: $e')));
+                                              }
+                                            }
+                                          }
+                                        },
+                                      ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          );
-                        }).toList(),
-                      );
-                    },
-                  ),
-                ],
+                            );
+                          }).toList(),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
           ),
 
           // 7. Input Komentar di Bagian Bawah
@@ -617,21 +707,21 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                     children: [
                       Image.memory(bytes, fit: BoxFit.cover),
                       if (images.length > 1)
-                      Positioned(
-                        bottom: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '${index + 1}/${images.length}',
-                            style: const TextStyle(color: Colors.white, fontSize: 12),
+                        Positioned(
+                          bottom: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '${index + 1}/${images.length}',
+                              style: const TextStyle(color: Colors.white, fontSize: 12),
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 );
@@ -741,8 +831,8 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
 }
 
 class FullScreenImageViewer extends StatefulWidget {
-  final List<String> images; // base64 strings
-  final List<String> filePaths; // local paths
+  final List<String> images;
+  final List<String> filePaths;
   final int initialIndex;
 
   const FullScreenImageViewer({
