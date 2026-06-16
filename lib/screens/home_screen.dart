@@ -19,8 +19,14 @@ class HomeScreen extends StatelessWidget {
       appBar: const HomeAppBar(),
       body: SafeArea(
         top: false,
-        child: CustomScrollView(
-          slivers: [
+        child: RefreshIndicator(
+          color: AppColors.primary,
+          onRefresh: () async {
+            await Future.delayed(const Duration(seconds: 1));
+          },
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
               sliver: SliverList(
@@ -52,6 +58,7 @@ class HomeScreen extends StatelessWidget {
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
+        ),
         ),
       ),
     );
@@ -355,7 +362,6 @@ class _RecentReportsState extends State<_RecentReports> {
           children: [
             _filterChip('Semua', null),
             _filterChip('Aktif', ReportStatus.pending),
-            _filterChip('Diproses', ReportStatus.inProgress),
             _filterChip('Selesai', ReportStatus.fixed),
           ],
         ),

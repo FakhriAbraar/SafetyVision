@@ -64,9 +64,15 @@ class _AdminScreenState extends State<AdminScreen> {
           }
 
           final reports = snapshot.data ?? [];
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
+          return RefreshIndicator(
+            color: AppColors.primary,
+            onRefresh: () async {
+              await Future.delayed(const Duration(seconds: 1));
+            },
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(20),
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildSectionTitle('Statistik Keseluruhan'),
@@ -81,6 +87,7 @@ class _AdminScreenState extends State<AdminScreen> {
                 const SizedBox(height: 16),
                 _buildHotspots(reports),
               ],
+            ),
             ),
           );
         },

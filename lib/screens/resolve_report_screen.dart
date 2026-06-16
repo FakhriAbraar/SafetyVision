@@ -28,8 +28,15 @@ class _ResolveReportScreenState extends State<ResolveReportScreen> {
   
   // State Tahap 2 (Form Penyelesaian)
   RoadReport? _selectedReport;
+  final TextEditingController _resolutionDescController = TextEditingController();
   final List<XFile> _photos = [];
   bool _isSubmitting = false;
+
+  @override
+  void dispose() {
+    _resolutionDescController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -80,11 +87,16 @@ class _ResolveReportScreenState extends State<ResolveReportScreen> {
 
   void _onReportTapped(RoadReport report) {
     final dist = _calculateDistance(report);
-    if (dist > 10.0) {
-      _showSnack('Anda harus berada dalam radius 10 meter untuk menyelesaikan laporan ini. (Jarak Anda: ${dist.toStringAsFixed(1)}m)', AppColors.danger, Icons.location_off_rounded);
+    if (dist > 50.0) {
+      _showErrorDialog('Lokasi Terlalu Jauh', 'Anda harus berada dalam radius 50 meter untuk memilih laporan ini. (Jarak Anda: ${dist.toStringAsFixed(1)}m)');
       return;
     }
-    setState(() => _selectedReport = report);
+
+    setState(() {
+      _selectedReport = report;
+      _resolutionDescController.clear();
+      _photos.clear();
+    });
   }
 
   Future<void> _openCamera() async {
@@ -100,6 +112,29 @@ class _ResolveReportScreenState extends State<ResolveReportScreen> {
 
   void _removePhoto(int index) {
     setState(() => _photos.removeAt(index));
+  }
+
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.location_off_rounded, color: AppColors.danger),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.danger))),
+          ],
+        ),
+        content: Text(message, style: const TextStyle(height: 1.5, color: AppColors.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Tutup', style: TextStyle(color: AppColors.primary)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showSnack(String label, Color bg, IconData icon) {
@@ -124,6 +159,18 @@ class _ResolveReportScreenState extends State<ResolveReportScreen> {
 
   Future<void> _submit() async {
     if (_selectedReport == null) return;
+    
+    final dist = _calculateDistance(_selectedReport!);
+    if (dist > 50.0) {
+      _showErrorDialog('Lokasi Terlalu Jauh', 'Anda harus berada dalam radius 50 meter untuk menyelesaikan laporan ini. (Jarak Anda: ${dist.toStringAsFixed(1)}m)');
+      return;
+    }
+
+    if (_resolutionDescController.text.trim().isEmpty) {
+      _showSnack('Silakan masukkan deskripsi perbaikan terlebih dahulu.', AppColors.warning, Icons.warning_amber_rounded);
+      return;
+    }
+
     if (_photos.isEmpty) {
       _showSnack('Silakan ambil minimal 1 foto bukti perbaikan.', AppColors.warning, Icons.warning_amber_rounded);
       return;
@@ -135,7 +182,11 @@ class _ResolveReportScreenState extends State<ResolveReportScreen> {
       final repo = AppScope.of(context).reports;
       final photoFiles = _photos.map((x) => File(x.path)).toList();
       await DbService().uploadResolvedImages(_selectedReport!.id, photoFiles);
-      await repo.updateStatus(_selectedReport!.id, ReportStatus.fixed);
+      await repo.updateStatus(
+        _selectedReport!.id, 
+        ReportStatus.fixed, 
+        resolutionDescription: _resolutionDescController.text.trim(),
+      );
 
       if (!mounted) return;
       _showSnack('Laporan berhasil diselesaikan!', AppColors.success, Icons.check_circle_rounded);
@@ -369,6 +420,7 @@ class _ResolveReportScreenState extends State<ResolveReportScreen> {
                 icon: const Icon(Icons.arrow_back_rounded),
                 onPressed: () => setState(() {
                   _selectedReport = null;
+                  _resolutionDescController.clear();
                   _photos.clear();
                 }),
                 padding: EdgeInsets.zero,
@@ -405,6 +457,28 @@ class _ResolveReportScreenState extends State<ResolveReportScreen> {
                   ],
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          const Text(
+            'Deskripsi Perbaikan (Wajib)',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _resolutionDescController,
+            maxLength: 250,
+            maxLines: 4,
+            decoration: InputDecoration(
+              hintText: 'Jelaskan perbaikan yang telah dilakukan...',
+              filled: true,
+              fillColor: AppColors.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.all(16),
             ),
           ),
           const SizedBox(height: 24),

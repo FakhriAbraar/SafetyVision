@@ -2,6 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../models/road_report.dart';
+import '../services/app_scope.dart';
+import '../services/auth_service.dart';
 import 'home_screen.dart';
 import 'map_screen.dart';
 import 'upload_report_screen.dart';
@@ -49,25 +52,48 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return _buildScaffold(false);
+      return _buildScaffold(false, false);
     }
     
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
-      builder: (context, snapshot) {
+      builder: (context, userSnapshot) {
         bool isAdmin = false;
-        if (snapshot.hasData && snapshot.data!.exists) {
-          final data = snapshot.data!.data() as Map<String, dynamic>?;
+        DateTime? lastHistoryOpened;
+        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+          final data = userSnapshot.data!.data() as Map<String, dynamic>?;
           if (data?['role'] == 'admin') {
             isAdmin = true;
           }
+          if (data != null && data.containsKey('lastHistoryOpened')) {
+            lastHistoryOpened = (data['lastHistoryOpened'] as Timestamp).toDate();
+          }
         }
-        return _buildScaffold(isAdmin);
+        
+        return StreamBuilder<List<RoadReport>>(
+          stream: AppScope.of(context).reports.watchReports(),
+          builder: (context, reportSnapshot) {
+            bool showHistoryBadge = false;
+            final reports = reportSnapshot.data ?? [];
+            if (reports.isNotEmpty) {
+              final latestReport = reports.reduce((a, b) {
+                final aTime = a.updatedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+                final bTime = b.updatedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+                return aTime.isAfter(bTime) ? a : b;
+              });
+              final latestTime = latestReport.updatedAt ?? latestReport.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+              if (lastHistoryOpened == null || latestTime.isAfter(lastHistoryOpened!)) {
+                showHistoryBadge = true;
+              }
+            }
+            return _buildScaffold(isAdmin, showHistoryBadge);
+          },
+        );
       },
     );
   }
 
-  Widget _buildScaffold(bool isAdmin) {
+  Widget _buildScaffold(bool isAdmin, bool showHistoryBadge) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: IndexedStack(
@@ -76,6 +102,7 @@ class _MainShellState extends State<MainShell> {
       ),
       bottomNavigationBar: _BottomNavBar(
         currentIndex: _currentIndex,
+        showHistoryBadge: showHistoryBadge,
         onTap: (index) {
           if (index == 2) {
             if (isAdmin) {
@@ -84,6 +111,9 @@ class _MainShellState extends State<MainShell> {
               _openReportSheet();
             }
             return;
+          }
+          if (index == 3) {
+             AuthService.updateLastHistoryOpened();
           }
           setState(() => _currentIndex = index);
         },
@@ -97,11 +127,13 @@ class _BottomNavBar extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
   final bool isAdmin;
+  final bool showHistoryBadge;
 
   const _BottomNavBar({
     required this.currentIndex,
     required this.onTap,
     required this.isAdmin,
+    required this.showHistoryBadge,
   });
 
   @override
@@ -143,7 +175,7 @@ class _BottomNavBar extends StatelessWidget {
                 icon: Icons.history_rounded,
                 label: 'Riwayat',
                 isActive: currentIndex == 3,
-                showBadge: true,
+                showBadge: showHistoryBadge && currentIndex != 3,
                 onTap: () => onTap(3),
               ),
               _NavItem(

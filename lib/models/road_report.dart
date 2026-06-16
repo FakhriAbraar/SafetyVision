@@ -65,7 +65,9 @@ class RoadReport {
   final String? imagePath; // path foto di penyimpanan lokal HP (bukan URL)
   final String? userId; // uid pemilik laporan (relasi ke user yang login)
   final String? userName; // nama pelapor (displayName user)
+  final String? resolutionDescription; // deskripsi perbaikan dari admin
   final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   const RoadReport({
     required this.id,
@@ -81,7 +83,9 @@ class RoadReport {
     this.imagePath,
     this.userId,
     this.userName,
+    this.resolutionDescription,
     this.createdAt,
+    this.updatedAt,
   });
 
   LatLng get location => LatLng(latitude, longitude);
@@ -91,6 +95,7 @@ class RoadReport {
   ) {
     final data = doc.data() ?? <String, dynamic>{};
     final created = (data['createdAt'] as Timestamp?)?.toDate();
+    final updated = (data['updatedAt'] as Timestamp?)?.toDate();
     return RoadReport(
       id: doc.id,
       title: data['title'] as String? ?? 'Tanpa judul',
@@ -105,7 +110,9 @@ class RoadReport {
       imagePath: data['imagePath'] as String?,
       userId: data['userId'] as String?,
       userName: data['userName'] as String?,
+      resolutionDescription: data['resolutionDescription'] as String?,
       createdAt: created,
+      updatedAt: updated ?? created, // fallback to createdAt if null
     );
   }
 
@@ -122,9 +129,13 @@ class RoadReport {
       'imagePath': imagePath,
       'userId': userId,
       'userName': userName,
+      'resolutionDescription': resolutionDescription,
       'createdAt': createdAt == null
           ? FieldValue.serverTimestamp()
           : Timestamp.fromDate(createdAt!),
+      'updatedAt': updatedAt == null
+          ? FieldValue.serverTimestamp()
+          : Timestamp.fromDate(updatedAt!),
     };
   }
 }

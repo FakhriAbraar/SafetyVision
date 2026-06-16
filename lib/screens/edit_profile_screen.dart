@@ -82,8 +82,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         await _user.updateDisplayName(_nameController.text.trim());
       }
 
-      // 2. Simpan Nomor Telepon ke Firestore
+      // 2. Simpan Data Profil ke Firestore
       await FirebaseFirestore.instance.collection('users').doc(_user.uid).set({
+        'displayName': _nameController.text.trim(),
         'phoneNumber': _phoneController.text.trim(),
       }, SetOptions(merge: true));
 

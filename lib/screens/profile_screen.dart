@@ -1,11 +1,15 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../models/road_report.dart';
+import '../services/app_scope.dart';
 import '../services/auth_service.dart';
 import '../services/db_service.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
 import 'edit_profile_screen.dart';
+import 'notification_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -146,16 +150,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            _buildProfileHeader(_user),
-            const SizedBox(height: 20),
-            _buildStatsRow(),
-            const SizedBox(height: 20),
-            _buildMenuSection(context),
-            const SizedBox(height: 32),
-          ],
+      body: RefreshIndicator(
+        color: AppColors.primary,
+        onRefresh: _loadData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            children: [
+              _buildProfileHeader(_user),
+              const SizedBox(height: 20),
+              _buildMenuSection(context),
+              const SizedBox(height: 32),
+            ],
+          ),
         ),
       ),
     );
@@ -183,19 +190,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  GestureDetector(
-                    onTap: () {},
-                    child: Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.settings_outlined,
-                          color: Colors.white, size: 18),
-                    ),
-                  ),
+                  const SizedBox(height: 36),
                 ],
               ),
               const SizedBox(height: 8),
@@ -276,33 +271,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildStatsRow() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
-        children: [
-          Expanded(child: _StatTile(value: '12', label: 'Laporan')),
-          SizedBox(width: 12),
-          Expanded(child: _StatTile(value: '8', label: 'Diproses')),
-          SizedBox(width: 12),
-          Expanded(child: _StatTile(value: '4', label: 'Selesai')),
-        ],
-      ),
-    );
-  }
-
   Widget _buildMenuSection(BuildContext context) {
-    final items = [
-      _MenuItem(Icons.person_outline_rounded, 'Edit Profil', () async {
-        final changed = await Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const EditProfileScreen()),
-        );
-        if (changed == true) {
-          _loadData();
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseAuth.instance.currentUser != null 
+          ? FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).snapshots()
+          : const Stream.empty(),
+      builder: (context, userSnapshot) {
+        DateTime? lastNotifOpened;
+        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+          final data = userSnapshot.data!.data() as Map<String, dynamic>?;
+          if (data != null && data.containsKey('lastNotifOpened')) {
+            lastNotifOpened = (data['lastNotifOpened'] as Timestamp).toDate();
+          }
         }
-      }),
-      _MenuItem(Icons.notifications_outlined, 'Notifikasi', () {}),
+        return StreamBuilder<List<RoadReport>>(
+          stream: AppScope.of(context).reports.watchReports(),
+          builder: (context, reportSnapshot) {
+            bool showNotifBadge = false;
+            final reports = reportSnapshot.data ?? [];
+            if (reports.isNotEmpty) {
+              final latestReport = reports.reduce((a, b) {
+                final aTime = a.updatedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+                final bTime = b.updatedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+                return aTime.isAfter(bTime) ? a : b;
+              });
+              final latestTime = latestReport.updatedAt ?? latestReport.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+              if (lastNotifOpened == null || latestTime.isAfter(lastNotifOpened!)) {
+                showNotifBadge = true;
+              }
+            }
+
+            final items = [
+              _MenuItem(Icons.person_outline_rounded, 'Edit Profil', () async {
+                final changed = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+                );
+                if (changed == true) {
+                  _loadData();
+                }
+              }),
+              _MenuItem(Icons.notifications_outlined, 'Notifikasi', () {
+                AuthService.updateLastNotifOpened();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const NotificationScreen()),
+                );
+              }, hasBadge: showNotifBadge),
       _MenuItem(Icons.help_outline_rounded, 'Bantuan', () => _showHelpDialog(context)),
       _MenuItem(Icons.info_outline_rounded, 'Tentang Aplikasi', () => _showAboutDialog(context)),
       _MenuItem(
@@ -352,17 +367,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          item.label,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: item.isDestructive
-                                ? AppColors.danger
-                                : AppColors.textPrimary,
-                          ),
-                        ),
-                        const Spacer(),
-                        if (!item.isDestructive)
+                              item.label,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: item.isDestructive
+                                    ? AppColors.danger
+                                    : AppColors.textPrimary,
+                              ),
+                            ),
+                          
+                          const Spacer(),
+                          if (item.hasBadge)
+                            Container(
+                              width: 8,
+                              height: 8,
+                              margin: const EdgeInsets.only(right: 8),
+                              decoration: const BoxDecoration(
+                                color: AppColors.danger,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          if (!item.isDestructive)
                           const Icon(Icons.chevron_right_rounded,
                               size: 18, color: AppColors.textMuted),
                       ],
@@ -377,6 +403,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
+        });
+      });
   }
 }
 
@@ -419,6 +447,7 @@ class _MenuItem {
   final String label;
   final VoidCallback onTap;
   final bool isDestructive;
+  final bool hasBadge;
 
-  _MenuItem(this.icon, this.label, this.onTap, {this.isDestructive = false});
+  _MenuItem(this.icon, this.label, this.onTap, {this.isDestructive = false, this.hasBadge = false});
 }

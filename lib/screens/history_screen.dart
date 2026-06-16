@@ -150,24 +150,36 @@ class HistoryScreen extends StatelessWidget {
           final allLogs = _generateLogs(allReports);
           final groupedLogs = _groupLogs(allLogs);
 
-          if (allLogs.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.list_alt_rounded, size: 48, color: AppColors.textMuted),
-                  SizedBox(height: 12),
-                  Text(
-                    'Belum ada riwayat aktivitas log.',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 14),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 12),
+          return RefreshIndicator(
+            color: AppColors.primary,
+            onRefresh: () async {
+              await Future.delayed(const Duration(seconds: 1));
+            },
+            child: allLogs.isEmpty
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      SizedBox(
+                        height: MediaQuery.of(context).size.height * 0.7,
+                        child: const Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.list_alt_rounded, size: 48, color: AppColors.textMuted),
+                              SizedBox(height: 12),
+                              Text(
+                                'Belum ada riwayat aktivitas log.',
+                                style: TextStyle(color: AppColors.textMuted, fontSize: 14),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : ListView.builder(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
             itemCount: groupedLogs.length,
             itemBuilder: (context, index) {
               final groupKey = groupedLogs.keys.elementAt(index);
@@ -202,8 +214,9 @@ class HistoryScreen extends StatelessWidget {
                 ],
               );
             },
-          );
-        },
+          ),
+        );
+      },
       ),
     );
   }

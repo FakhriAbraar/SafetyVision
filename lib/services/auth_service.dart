@@ -33,6 +33,22 @@ class AuthService {
     return 'user'; // Default role jika dokumen tidak ditemukan
   }
 
+  static Future<void> updateLastHistoryOpened() async {
+    final uid = currentUser?.uid;
+    if (uid == null) return;
+    await _firestore.collection('users').doc(uid).set({
+      'lastHistoryOpened': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  static Future<void> updateLastNotifOpened() async {
+    final uid = currentUser?.uid;
+    if (uid == null) return;
+    await _firestore.collection('users').doc(uid).set({
+      'lastNotifOpened': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   /// Login dengan email & password
   /// Melempar [FirebaseAuthException] jika gagal
   static Future<UserCredential> signIn({

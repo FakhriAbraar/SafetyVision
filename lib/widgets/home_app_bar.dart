@@ -1,7 +1,14 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/road_report.dart';
 import '../services/app_scope.dart';
+import '../services/db_service.dart';
 import '../theme/app_theme.dart';
+import '../screens/notification_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../screens/profile_screen.dart';
+import '../services/auth_service.dart';
 
 class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   const HomeAppBar({super.key});
@@ -97,27 +104,81 @@ class HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
                 ],
               ),
             ),
-            _IconButton(
-              icon: Icons.notifications_outlined,
-              hasBadge: true,
-              onTap: () {},
+            StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseAuth.instance.currentUser != null 
+                  ? FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).snapshots()
+                  : const Stream.empty(),
+              builder: (context, userSnapshot) {
+                DateTime? lastNotifOpened;
+                if (userSnapshot.hasData && userSnapshot.data!.exists) {
+                  final data = userSnapshot.data!.data() as Map<String, dynamic>?;
+                  if (data != null && data.containsKey('lastNotifOpened')) {
+                    lastNotifOpened = (data['lastNotifOpened'] as Timestamp).toDate();
+                  }
+                }
+                return StreamBuilder<List<RoadReport>>(
+                  stream: AppScope.of(context).reports.watchReports(),
+                  builder: (context, reportSnapshot) {
+                    bool showNotifBadge = false;
+                    final reports = reportSnapshot.data ?? [];
+                    if (reports.isNotEmpty) {
+                      final latestReport = reports.reduce((a, b) {
+                        final aTime = a.updatedAt ?? a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+                        final bTime = b.updatedAt ?? b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+                        return aTime.isAfter(bTime) ? a : b;
+                      });
+                      final latestTime = latestReport.updatedAt ?? latestReport.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+                      if (lastNotifOpened == null || latestTime.isAfter(lastNotifOpened!)) {
+                        showNotifBadge = true;
+                      }
+                    }
+                    return _IconButton(
+                      icon: Icons.notifications_outlined,
+                      hasBadge: showNotifBadge,
+                      onTap: () {
+                        AuthService.updateLastNotifOpened();
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const NotificationScreen()),
+                        );
+                      },
+                    );
+                  },
+                );
+              },
             ),
             const SizedBox(width: 10),
             GestureDetector(
-              onTap: () {},
-              child: Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.divider, width: 1.5),
-                  image: const DecorationImage(
-                    image: NetworkImage(
-                      'https://i.pravatar.cc/100?img=12',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                );
+              },
+              child: FutureBuilder<String?>(
+                future: FirebaseAuth.instance.currentUser != null 
+                    ? DbService().fetchProfilePicture(FirebaseAuth.instance.currentUser!.uid)
+                    : Future.value(null),
+                builder: (context, snapshot) {
+                  final base64String = snapshot.data;
+                  return Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.divider, width: 1.5),
+                      image: base64String != null
+                          ? DecorationImage(
+                              image: MemoryImage(base64Decode(base64String)),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
                     ),
-                    fit: BoxFit.cover,
-                  ),
-                ),
+                    child: base64String == null
+                        ? const Icon(Icons.person_rounded, color: AppColors.textSecondary)
+                        : null,
+                  );
+                },
               ),
             ),
           ],

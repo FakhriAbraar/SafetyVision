@@ -7,7 +7,7 @@ import '../models/road_report.dart';
 abstract class ReportRepository {
   Stream<List<RoadReport>> watchReports();
   Future<String> addReport(RoadReport report);
-  Future<void> updateStatus(String id, ReportStatus status);
+  Future<void> updateStatus(String id, ReportStatus status, {String? resolutionDescription});
   // Tambahan fungsi upvoteReport
   Future<void> upvoteReport(String id);
   Future<void> deleteReport(String id);
@@ -36,7 +36,7 @@ class DummyReportRepository implements ReportRepository {
   }
 
   @override
-  Future<void> updateStatus(String id, ReportStatus status) async {
+  Future<void> updateStatus(String id, ReportStatus status, {String? resolutionDescription}) async {
     final idx = _reports.indexWhere((r) => r.id == id);
     if (idx == -1) return;
     final old = _reports[idx];
@@ -54,7 +54,9 @@ class DummyReportRepository implements ReportRepository {
       imagePath: old.imagePath,
       userId: old.userId,
       userName: old.userName,
+      resolutionDescription: resolutionDescription ?? old.resolutionDescription,
       createdAt: old.createdAt,
+      updatedAt: DateTime.now(),
     );
     _controller.add(List.unmodifiable(_reports));
   }
@@ -78,6 +80,7 @@ class DummyReportRepository implements ReportRepository {
       imagePath: old.imagePath,
       userId: old.userId,
       userName: old.userName,
+      resolutionDescription: old.resolutionDescription,
       createdAt: old.createdAt,
     );
     _controller.add(List.unmodifiable(_reports));
@@ -118,14 +121,19 @@ class FirestoreReportRepository implements ReportRepository {
   }
 
   @override
-  Future<void> updateStatus(String id, ReportStatus status) async {
-    await _ref.doc(id).update({
+  Future<void> updateStatus(String id, ReportStatus status, {String? resolutionDescription}) async {
+    final Map<String, dynamic> data = {
       'status': switch (status) {
         ReportStatus.pending => 'pending',
         ReportStatus.inProgress => 'in_progress',
         ReportStatus.fixed => 'fixed',
       },
-    });
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    if (resolutionDescription != null) {
+      data['resolutionDescription'] = resolutionDescription;
+    }
+    await _ref.doc(id).update(data);
   }
 
   @override
@@ -133,6 +141,7 @@ class FirestoreReportRepository implements ReportRepository {
     // Menggunakan Increment agar pembaruan data upvote aman (Atomic operation)
     await _ref.doc(id).update({
       'votes': FieldValue.increment(1),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
   }
 

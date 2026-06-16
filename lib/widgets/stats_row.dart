@@ -33,16 +33,7 @@ class StatsRow extends StatelessWidget {
                 label: 'Aktif',
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _StatCard(
-                icon: Icons.handyman_rounded,
-                iconColor: AppColors.warning,
-                iconBg: const Color(0xFFFEF3C7),
-                value: '$diproses',
-                label: 'Diproses',
-              ),
-            ),
+
             const SizedBox(width: 12),
             Expanded(
               child: _StatCard(
