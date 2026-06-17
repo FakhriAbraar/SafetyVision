@@ -14,6 +14,7 @@ Color reportSeverityColor(ReportSeverity s) {
     case ReportSeverity.high: return AppColors.danger;
     case ReportSeverity.medium: return AppColors.warning;
     case ReportSeverity.low: return AppColors.success;
+    case ReportSeverity.other: return AppColors.textSecondary;
   }
 }
 
@@ -22,6 +23,7 @@ String reportSeverityLabel(ReportSeverity s) {
     case ReportSeverity.high: return 'Parah';
     case ReportSeverity.medium: return 'Sedang';
     case ReportSeverity.low: return 'Ringan';
+    case ReportSeverity.other: return 'Lainnya';
   }
 }
 
@@ -52,6 +54,7 @@ class ReportDetailScreen extends StatefulWidget {
 
 class _ReportDetailScreenState extends State<ReportDetailScreen> {
   late ReportStatus _status = widget.report.status;
+  late String _description = widget.report.description;
   bool _updating = false;
   String _currentUserRole = 'user';
 
@@ -130,6 +133,72 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Gagal menghapus postingan: $e'), backgroundColor: AppColors.danger),
+      );
+    }
+  }
+
+  // Dialog Edit Deskripsi
+  void _showEditDescriptionDialog() {
+    final controller = TextEditingController(text: _description);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.edit_rounded, color: AppColors.primary),
+            SizedBox(width: 8),
+            Text('Edit Deskripsi', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          ],
+        ),
+        content: TextField(
+          controller: controller,
+          maxLines: 5,
+          decoration: InputDecoration(
+            hintText: 'Masukkan deskripsi baru',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _editDescription(controller.text.trim());
+            },
+            child: const Text('Simpan', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editDescription(String newDescription) async {
+    if (newDescription.isEmpty || newDescription == _description) return;
+    
+    try {
+      await AppScope.of(context).reports.updateDescription(report.id, newDescription);
+      if (!mounted) return;
+      setState(() {
+        _description = newDescription;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Deskripsi berhasil diperbarui.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal memperbarui deskripsi: $e'), backgroundColor: AppColors.danger),
       );
     }
   }
@@ -231,6 +300,9 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
     final severityColor = reportSeverityColor(report.severity);
     final severityLabel = reportSeverityLabel(report.severity);
     final isViewerAdmin = _currentUserRole == 'admin';
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final isCreator = currentUser != null && currentUser.uid == report.userId;
+    final canEditOrDelete = isViewerAdmin || isCreator;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -240,7 +312,13 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         actions: [
-          if (isViewerAdmin)
+          if (isCreator)
+            IconButton(
+              icon: const Icon(Icons.edit_note_rounded, color: AppColors.primary, size: 28),
+              tooltip: 'Edit Deskripsi Laporan',
+              onPressed: _showEditDescriptionDialog,
+            ),
+          if (canEditOrDelete)
             IconButton(
               icon: const Icon(Icons.delete_forever_rounded, color: AppColors.danger, size: 24),
               tooltip: 'Hapus Seluruh Postan',
@@ -285,14 +363,24 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                       ),
                     ),
 
-                    // 3. Status Saat Ini
+                    // 3. Status & Kategori Saat Ini
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                      child: _badge(
-                        label: statusLabel,
-                        color: statusColor,
-                        icon: isFixed ? Icons.check_circle_rounded : Icons.build_circle_rounded,
-                        filled: true,
+                      child: Row(
+                        children: [
+                          _badge(
+                            label: statusLabel,
+                            color: statusColor,
+                            icon: isFixed ? Icons.check_circle_rounded : Icons.build_circle_rounded,
+                            filled: true,
+                          ),
+                          const SizedBox(width: 8),
+                          _badge(
+                            label: report.category,
+                            color: AppColors.textSecondary,
+                            icon: Icons.category_rounded,
+                          ),
+                        ],
                       ),
                     ),
 
@@ -380,7 +468,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                                 const Text('Deskripsi:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
                                 const SizedBox(height: 4),
                                 Text(
-                                  report.description,
+                                  _description,
                                   style: const TextStyle(fontSize: 14, color: AppColors.textPrimary, height: 1.5),
                                 ),
                               ],

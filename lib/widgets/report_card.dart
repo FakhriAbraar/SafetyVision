@@ -30,6 +30,12 @@ class ReportCard extends StatelessWidget {
           bg: const Color(0xFFD1FAE5),
           label: 'Ringan',
         );
+      case ReportSeverity.other:
+        return (
+          color: AppColors.textSecondary,
+          bg: AppColors.divider.withValues(alpha: 0.2),
+          label: 'Lainnya',
+        );
     }
   }
 

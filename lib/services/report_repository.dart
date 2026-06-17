@@ -11,6 +11,7 @@ abstract class ReportRepository {
   // Tambahan fungsi upvoteReport
   Future<void> upvoteReport(String id);
   Future<void> deleteReport(String id);
+  Future<void> updateDescription(String id, String description);
 }
 
 class DummyReportRepository implements ReportRepository {
@@ -45,6 +46,7 @@ class DummyReportRepository implements ReportRepository {
       title: old.title,
       address: old.address,
       description: old.description,
+      category: old.category,
       latitude: old.latitude,
       longitude: old.longitude,
       severity: old.severity,
@@ -71,6 +73,7 @@ class DummyReportRepository implements ReportRepository {
       title: old.title,
       address: old.address,
       description: old.description,
+      category: old.category,
       latitude: old.latitude,
       longitude: old.longitude,
       severity: old.severity,
@@ -89,6 +92,33 @@ class DummyReportRepository implements ReportRepository {
   @override
   Future<void> deleteReport(String id) async {
     _reports.removeWhere((r) => r.id == id);
+    _controller.add(List.unmodifiable(_reports));
+  }
+
+  @override
+  Future<void> updateDescription(String id, String description) async {
+    final idx = _reports.indexWhere((r) => r.id == id);
+    if (idx == -1) return;
+    final old = _reports[idx];
+    _reports[idx] = RoadReport(
+      id: old.id,
+      title: old.title,
+      address: old.address,
+      description: description,
+      category: old.category,
+      latitude: old.latitude,
+      longitude: old.longitude,
+      severity: old.severity,
+      status: old.status,
+      reportedAgo: old.reportedAgo,
+      votes: old.votes,
+      imagePath: old.imagePath,
+      userId: old.userId,
+      userName: old.userName,
+      resolutionDescription: old.resolutionDescription,
+      createdAt: old.createdAt,
+      updatedAt: DateTime.now(),
+    );
     _controller.add(List.unmodifiable(_reports));
   }
 }
@@ -148,5 +178,13 @@ class FirestoreReportRepository implements ReportRepository {
   @override
   Future<void> deleteReport(String id) async {
     await _ref.doc(id).delete();
+  }
+
+  @override
+  Future<void> updateDescription(String id, String description) async {
+    await _ref.doc(id).update({
+      'description': description,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 }

@@ -118,6 +118,8 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
         return ReportSeverity.low;
       case 'Parah':
         return ReportSeverity.high;
+      case 'Lainnya':
+        return ReportSeverity.other;
       default:
         return ReportSeverity.medium;
     }
@@ -150,6 +152,7 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
       title: title.isEmpty ? 'Laporan Kerusakan' : title,
       address: address.isEmpty ? loc.address : address,
       description: desc.isEmpty ? 'Tidak ada deskripsi' : desc,
+      category: _selectedCategory,
       latitude: loc.latitude,
       longitude: loc.longitude,
       severity: _severityFromLabel(_selectedSeverity),
@@ -660,7 +663,7 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
           responseSchema: Schema.object(
             properties: {
               'kategori': Schema.string(description: 'Kategori masalah, contoh: Jalan Rusak, Banjir, Trotoar Rusak, Lampu Mati, Lainnya'),
-              'keparahan': Schema.string(description: 'Tingkat keparahan: Ringan, Sedang, atau Parah'),
+              'keparahan': Schema.string(description: 'Tingkat keparahan: Ringan, Sedang, Parah, atau Lainnya'),
             },
           ),
         ),
@@ -685,8 +688,10 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
           }
           if (data['keparahan'] != null) {
              String sev = data['keparahan'].toString();
-             if (['Ringan', 'Sedang', 'Parah'].contains(sev)) {
+             if (['Ringan', 'Sedang', 'Parah', 'Lainnya'].contains(sev)) {
                _selectedSeverity = sev;
+             } else {
+               _selectedSeverity = 'Lainnya';
              }
           }
         } catch (e) {
@@ -706,7 +711,7 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
 
   // ─── Step 3: Hasil Analisis ───────────────────────────────────
   Widget _buildStep3Analysis() {
-    final severities = ['Ringan', 'Sedang', 'Parah'];
+    final severities = ['Ringan', 'Sedang', 'Parah', 'Lainnya'];
     final categories = [
       'Jalan Rusak',
       'Banjir',
@@ -798,16 +803,20 @@ class _UploadReportScreenState extends State<UploadReportScreen> {
                 color = AppColors.warning;
                 bgColor = const Color(0xFFFEF3C7);
                 break;
-              default:
+              case 'Parah':
                 color = AppColors.danger;
                 bgColor = const Color(0xFFFEE2E2);
+                break;
+              default:
+                color = AppColors.textSecondary;
+                bgColor = AppColors.divider.withValues(alpha: 0.2);
             }
             return Expanded(
               child: GestureDetector(
                 onTap: () => setState(() => _selectedSeverity = s),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
-                  margin: EdgeInsets.only(right: s != 'Parah' ? 8 : 0),
+                  margin: EdgeInsets.only(right: s != severities.last ? 4 : 0),
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
                     color: isSelected ? bgColor : AppColors.surface,

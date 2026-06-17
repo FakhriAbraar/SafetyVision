@@ -15,6 +15,8 @@ Color reportSeverityColor(ReportSeverity s) {
       return AppColors.warning;
     case ReportSeverity.low:
       return AppColors.success;
+    case ReportSeverity.other:
+      return AppColors.textSecondary;
   }
 }
 
@@ -26,6 +28,8 @@ String reportSeverityLabel(ReportSeverity s) {
       return 'Sedang';
     case ReportSeverity.low:
       return 'Ringan';
+    case ReportSeverity.other:
+      return 'Lainnya';
   }
 }
 
@@ -187,14 +191,24 @@ class _ReportDetailSheetState extends State<ReportDetailSheet> {
                           ],
                         ),
                         const SizedBox(height: 12),
-                        // Status (centang hijau bila sudah diperbaiki)
-                        _badge(
-                          label: statusLabel,
-                          color: statusColor,
-                          icon: isFixed
-                              ? Icons.check_circle_rounded
-                              : Icons.build_circle_rounded,
-                          filled: true,
+                        // Status & Kategori
+                        Row(
+                          children: [
+                            _badge(
+                              label: statusLabel,
+                              color: statusColor,
+                              icon: isFixed
+                                  ? Icons.check_circle_rounded
+                                  : Icons.build_circle_rounded,
+                              filled: true,
+                            ),
+                            const SizedBox(width: 8),
+                            _badge(
+                              label: report.category,
+                              color: AppColors.textSecondary,
+                              icon: Icons.category_rounded,
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 16),
                         // Ubah status laporan (tersimpan ke Firestore)

@@ -310,6 +310,8 @@ class _ResolveReportScreenState extends State<ResolveReportScreen> {
                 _filterChip('Sedang', ReportSeverity.medium),
                 const SizedBox(width: 8),
                 _filterChip('Ringan', ReportSeverity.low),
+                const SizedBox(width: 8),
+                _filterChip('Lainnya', ReportSeverity.other),
               ],
             ),
           ),
@@ -381,6 +383,7 @@ class _ResolveReportScreenState extends State<ResolveReportScreen> {
       case ReportSeverity.high: return 'Parah';
       case ReportSeverity.medium: return 'Sedang';
       case ReportSeverity.low: return 'Ringan';
+      case ReportSeverity.other: return 'Lainnya';
     }
   }
 

@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:latlong2/latlong.dart';
 
-enum ReportSeverity { low, medium, high }
+enum ReportSeverity { low, medium, high, other }
 
 enum ReportStatus { pending, inProgress, fixed }
 
@@ -11,6 +11,8 @@ ReportSeverity _severityFromString(String? value) {
       return ReportSeverity.high;
     case 'low':
       return ReportSeverity.low;
+    case 'other':
+      return ReportSeverity.other;
     case 'medium':
     default:
       return ReportSeverity.medium;
@@ -25,6 +27,8 @@ String _severityToString(ReportSeverity s) {
       return 'medium';
     case ReportSeverity.low:
       return 'low';
+    case ReportSeverity.other:
+      return 'other';
   }
 }
 
@@ -56,6 +60,7 @@ class RoadReport {
   final String title;
   final String address;
   final String description;
+  final String category;
   final double latitude;
   final double longitude;
   final ReportSeverity severity;
@@ -74,6 +79,7 @@ class RoadReport {
     required this.title,
     required this.address,
     required this.description,
+    required this.category,
     required this.latitude,
     required this.longitude,
     required this.severity,
@@ -101,6 +107,7 @@ class RoadReport {
       title: data['title'] as String? ?? 'Tanpa judul',
       address: data['address'] as String? ?? '-',
       description: data['description'] as String? ?? '',
+      category: data['category'] as String? ?? 'Lainnya',
       latitude: (data['latitude'] as num?)?.toDouble() ?? 0,
       longitude: (data['longitude'] as num?)?.toDouble() ?? 0,
       severity: _severityFromString(data['severity'] as String?),
@@ -121,6 +128,7 @@ class RoadReport {
       'title': title,
       'address': address,
       'description': description,
+      'category': category,
       'latitude': latitude,
       'longitude': longitude,
       'severity': _severityToString(severity),
@@ -156,6 +164,7 @@ class DummyData {
       title: 'Lubang besar di tengah jalan',
       address: 'Jl. Sudirman No. 45, Jakarta',
       description: 'Ada lubang yang cukup dalam dan membahayakan pengendara motor.',
+      category: 'Jalan Rusak',
       latitude: -6.2088,
       longitude: 106.8456,
       severity: ReportSeverity.high,
@@ -168,6 +177,7 @@ class DummyData {
       title: 'Aspal retak panjang',
       address: 'Jl. Gatot Subroto, Jakarta',
       description: 'Retak parah di sisi kiri jalan sepanjang 5 meter.',
+      category: 'Jalan Rusak',
       latitude: -6.2350,
       longitude: 106.8200,
       severity: ReportSeverity.medium,
@@ -180,6 +190,7 @@ class DummyData {
       title: 'Genangan air dalam',
       address: 'Jl. Thamrin, Jakarta Pusat',
       description: 'Drainase buruk membuat jalan tergenang sehabis hujan.',
+      category: 'Banjir',
       latitude: -6.1950,
       longitude: 106.8230,
       severity: ReportSeverity.low,
@@ -192,6 +203,7 @@ class DummyData {
       title: 'Trotoar hancur',
       address: 'Jl. Kuningan, Jakarta',
       description: 'Trotoar tidak bisa dilewati pejalan kaki karena material berserakan.',
+      category: 'Trotoar Rusak',
       latitude: -6.2250,
       longitude: 106.8350,
       severity: ReportSeverity.medium,

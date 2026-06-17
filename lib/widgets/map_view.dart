@@ -41,6 +41,8 @@ class _MapViewState extends State<MapView> {
         return AppColors.warning;
       case ReportSeverity.low:
         return AppColors.success;
+      case ReportSeverity.other:
+        return AppColors.textSecondary;
     }
   }
 
