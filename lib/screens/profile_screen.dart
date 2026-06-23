@@ -9,7 +9,9 @@ import '../services/db_service.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
 import 'edit_profile_screen.dart';
-import 'notification_screen.dart';
+import 'notification_settings_screen.dart';
+import 'help_screen.dart';
+import 'about_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -21,6 +23,8 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   User? _user;
   String? _profilePicBase64;
+  int _reportCount = 0;
+  int _totalVotesReceived = 0;
 
   @override
   void initState() {
@@ -32,73 +36,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await AuthService.reloadUser();
     final user = FirebaseAuth.instance.currentUser;
     setState(() => _user = user);
-    
+
     if (user != null) {
+      // Load foto profil
       final pic = await DbService().fetchProfilePicture(user.uid);
+
+      // Hitung laporan & total upvote milik user ini
+      int reportCount = 0;
+      int totalVotes = 0;
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('reports')
+            .where('userId', isEqualTo: user.uid)
+            .get();
+        reportCount = snap.docs.length;
+        for (final doc in snap.docs) {
+          totalVotes += (doc.data()['votes'] as num? ?? 0).toInt();
+        }
+      } catch (_) {}
+
       if (mounted) {
-        setState(() => _profilePicBase64 = pic);
+        setState(() {
+          _profilePicBase64 = pic;
+          _reportCount = reportCount;
+          _totalVotesReceived = totalVotes;
+        });
       }
     }
   }
 
-  void _showHelpDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Bantuan', style: TextStyle(fontWeight: FontWeight.w700)),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Jika Anda mengalami masalah, silakan hubungi kami melalui:', style: TextStyle(color: AppColors.textSecondary)),
-            SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(Icons.phone, color: AppColors.primary, size: 20),
-                SizedBox(width: 8),
-                Text('+62 822-4584-6763', style: TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
-            SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(Icons.email, color: AppColors.primary, size: 20),
-                SizedBox(width: 8),
-                Text('alden@gmail.com', style: TextStyle(fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Tutup', style: TextStyle(color: AppColors.primary)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAboutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Tentang Aplikasi', style: TextStyle(fontWeight: FontWeight.w700)),
-        content: const Text(
-          'SafeVision adalah aplikasi pelaporan kerusakan jalan yang bertujuan untuk memudahkan masyarakat dalam melaporkan jalan berlubang, rusak, atau fasilitas publik yang membutuhkan perbaikan. Bersama-sama mewujudkan jalan yang aman dan nyaman.',
-          style: TextStyle(color: AppColors.textSecondary, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Tutup', style: TextStyle(color: AppColors.primary)),
-          ),
-        ],
-      ),
-    );
-  }
+  /// Hitung poin: 30 poin per laporan + 2 poin per upvote yang diterima
+  int get _points => (_reportCount * 30) + (_totalVotesReceived * 2);
 
   void _confirmSignOut(BuildContext context) {
     showDialog(
@@ -245,24 +213,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 style: const TextStyle(color: Colors.white70, fontSize: 13),
               ),
               const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.bolt_rounded, color: AppColors.accent, size: 16),
-                    SizedBox(width: 4),
-                    Text('120 Poin',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600)),
-                  ],
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Badge Poin
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.bolt_rounded, color: AppColors.accent, size: 16),
+                        const SizedBox(width: 4),
+                        Text('$_points Poin',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  // Badge jumlah laporan
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.report_rounded, color: Colors.white70, size: 15),
+                        const SizedBox(width: 4),
+                        Text('$_reportCount Laporan',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -312,14 +307,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 }
               }),
               _MenuItem(Icons.notifications_outlined, 'Notifikasi', () {
-                AuthService.updateLastNotifOpened();
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const NotificationScreen()),
+                  MaterialPageRoute(
+                      builder: (_) => const NotificationSettingsScreen()),
                 );
-              }, hasBadge: showNotifBadge),
-      _MenuItem(Icons.help_outline_rounded, 'Bantuan', () => _showHelpDialog(context)),
-      _MenuItem(Icons.info_outline_rounded, 'Tentang Aplikasi', () => _showAboutDialog(context)),
+              }),
+              _MenuItem(Icons.help_outline_rounded, 'Bantuan', () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HelpScreen()),
+                );
+              }),
+              _MenuItem(Icons.info_outline_rounded, 'Tentang Aplikasi', () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AboutScreen()),
+                );
+              }),
       _MenuItem(
         Icons.logout_rounded,
         'Keluar',

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -22,13 +23,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   final User? _user = FirebaseAuth.instance.currentUser;
   bool _isLoading = false;
+  bool _isLoadingPic = true;
   File? _selectedImage;
+  String? _existingProfilePicBase64; // foto profil yang sudah tersimpan
 
   @override
   void initState() {
     super.initState();
     _nameController.text = _user?.displayName ?? '';
     _loadPhoneNumber();
+    _loadExistingPhoto();
+  }
+
+  Future<void> _loadExistingPhoto() async {
+    if (_user == null) {
+      setState(() => _isLoadingPic = false);
+      return;
+    }
+    try {
+      final pic = await DbService().fetchProfilePicture(_user!.uid);
+      if (mounted) {
+        setState(() {
+          _existingProfilePicBase64 = pic;
+          _isLoadingPic = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingPic = false);
+    }
   }
 
   Future<void> _loadPhoneNumber() async {
@@ -156,12 +178,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             shape: BoxShape.circle,
                             color: Colors.grey[300],
                             image: _selectedImage != null
-                                ? DecorationImage(image: FileImage(_selectedImage!), fit: BoxFit.cover)
-                                : null,
+                                ? DecorationImage(
+                                    image: FileImage(_selectedImage!),
+                                    fit: BoxFit.cover,
+                                  )
+                                : (_existingProfilePicBase64 != null
+                                    ? DecorationImage(
+                                        image: MemoryImage(
+                                            base64Decode(_existingProfilePicBase64!)),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null),
                           ),
-                          child: _selectedImage == null 
-                              ? const Icon(Icons.person, size: 50, color: Colors.grey)
-                              : null,
+                          child: _isLoadingPic
+                              ? const CircularProgressIndicator(
+                                  color: AppColors.primary, strokeWidth: 2)
+                              : (_selectedImage == null &&
+                                      _existingProfilePicBase64 == null
+                                  ? const Icon(Icons.person,
+                                      size: 50, color: Colors.grey)
+                                  : null),
                         ),
                         Positioned(
                           bottom: 0,
@@ -172,7 +208,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               color: AppColors.primary,
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                            child: const Icon(Icons.camera_alt,
+                                size: 16, color: Colors.white),
                           ),
                         ),
                       ],

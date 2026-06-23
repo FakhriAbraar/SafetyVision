@@ -7,7 +7,14 @@ import '../theme/app_theme.dart';
 import 'report_detail_sheet.dart';
 
 class MapView extends StatefulWidget {
-  const MapView({super.key});
+  final ReportStatus? filterStatus;
+  final String? filterCategory;
+
+  const MapView({
+    super.key,
+    this.filterStatus,
+    this.filterCategory,
+  });
 
   @override
   State<MapView> createState() => _MapViewState();
@@ -67,10 +74,23 @@ class _MapViewState extends State<MapView> {
         stream: repo.watchReports(),
         initialData: const [],
         builder: (context, snapshot) {
-          final reports = snapshot.data ?? const <RoadReport>[];
+          final allReports = snapshot.data ?? const <RoadReport>[];
+
+          // Terapkan filter status dan kategori
+          final reports = allReports.where((r) {
+            if (widget.filterStatus != null && r.status != widget.filterStatus) {
+              return false;
+            }
+            if (widget.filterCategory != null &&
+                r.category != widget.filterCategory) {
+              return false;
+            }
+            return true;
+          }).toList();
+
           // Fokus ke laporan terbaru (paling depan), atau default bila kosong.
           final target =
-              reports.isNotEmpty ? reports.first.location : DummyData.defaultCenter;
+              allReports.isNotEmpty ? allReports.first.location : DummyData.defaultCenter;
           _recenterIfNeeded(target);
           return Stack(
             children: [
@@ -120,8 +140,6 @@ class _MapViewState extends State<MapView> {
                       icon: Icons.my_location_rounded,
                       onTap: () => _mapController.move(target, 15),
                     ),
-                    const SizedBox(height: 8),
-                    _MapAction(icon: Icons.layers_outlined, onTap: () {}),
                   ],
                 ),
               ),
@@ -157,7 +175,9 @@ class _MapViewState extends State<MapView> {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        '${reports.length} laporan di sekitar',
+                        reports.length == allReports.length
+                            ? '${reports.length} laporan di sekitar'
+                            : '${reports.length} dari ${allReports.length} laporan',
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
