@@ -9,6 +9,7 @@ import '../widgets/report_card.dart';
 import '../widgets/stats_row.dart';
 import 'report_detail_screen.dart'; // Import screen detail yang baru
 import 'admin_screen.dart';
+import 'chat_screen.dart';
 class HomeScreen extends StatelessWidget {
   final VoidCallback? onSeeMap;
   const HomeScreen({super.key, this.onSeeMap});
@@ -60,6 +61,16 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
         ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const ChatScreen()),
+          );
+        },
+        backgroundColor: AppColors.primary,
+        child: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white),
       ),
     );
   }
